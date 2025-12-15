@@ -42,10 +42,24 @@ export async function parsePiAgent(filePath: string): Promise<ParsedSession> {
       };
       entries.push({ type: "session", timestamp: entry.timestamp });
     } else if (entry.type === "message" && entry.message) {
-      const content: ContentBlock[] = entry.message.content.map((c) => ({
-        type: c.type,
-        text: c.text,
-      }));
+      const content: ContentBlock[] = entry.message.content.map((c: Record<string, unknown>) => {
+        if (c.type === "toolCall") {
+          return {
+            type: "toolCall",
+            name: c.name as string,
+            arguments: c.arguments as Record<string, unknown>,
+          };
+        } else if (c.type === "thinking") {
+          return {
+            type: "thinking",
+            thinking: c.thinking as string,
+          };
+        }
+        return {
+          type: c.type as string,
+          text: c.text as string,
+        };
+      });
 
       entries.push({
         type: "message",
