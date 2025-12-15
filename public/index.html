@@ -6,19 +6,32 @@
   <title>Session Viewer</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; padding: 20px; line-height: 1.5; }
-    .container { max-width: 900px; margin: 0 auto; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; line-height: 1.5; height: 100vh; overflow: hidden; }
 
-    .controls { background: #fff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0; display: flex; gap: 16px; align-items: center; }
-    .controls label { font-size: 13px; color: #666; }
-    .controls select { padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; font-size: 14px; min-width: 150px; }
+    .app-layout { display: grid; grid-template-columns: 280px 1fr; height: 100vh; }
 
-    .session-list { background: #fff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0; }
-    .session-list h2 { font-size: 14px; margin-bottom: 12px; color: #666; }
-    .session-item { padding: 8px 12px; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; font-size: 13px; }
-    .session-item:hover { background: #f0f0f0; }
-    .session-item.active { background: #e7f3ff; }
-    .session-item .time { color: #888; }
+    .sidebar { background: #fff; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-header { padding: 12px; border-bottom: 1px solid #e0e0e0; }
+    .sidebar-header label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
+    .sidebar-header select { width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #ddd; font-size: 13px; }
+
+    .session-tree { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .tree-folder { user-select: none; }
+    .tree-folder-header { display: flex; align-items: center; gap: 4px; padding: 6px 8px; cursor: pointer; font-size: 13px; color: #333; }
+    .tree-folder-header:hover { background: #f5f5f5; }
+    .tree-toggle { width: 16px; font-size: 10px; color: #888; flex-shrink: 0; transition: transform 0.15s; }
+    .tree-folder.open > .tree-folder-header .tree-toggle { transform: rotate(90deg); }
+    .tree-folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-folder-children { display: none; }
+    .tree-folder.open > .tree-folder-children { display: block; }
+
+    .tree-session { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; cursor: pointer; font-size: 12px; gap: 8px; }
+    .tree-session:hover { background: #f0f0f0; }
+    .tree-session.active { background: #e7f3ff; }
+    .tree-session-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; color: #333; }
+    .tree-session-time { color: #999; font-size: 11px; flex-shrink: 0; }
+
+    .main-content { overflow-y: auto; padding: 20px; }
 
     .header { background: #fff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0; }
     .header h1 { font-size: 18px; margin-bottom: 8px; }
@@ -63,37 +76,41 @@
     .usage span { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
 
     .text-content { white-space: pre-wrap; }
+
+    .empty-state { color: #888; padding: 20px; text-align: center; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="controls">
-      <label>Agent:</label>
-      <select id="rootSelect"></select>
-    </div>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <label>Agent</label>
+        <select id="rootSelect"></select>
+      </div>
+      <div class="session-tree" id="sessionTree">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </aside>
 
-    <div class="session-list">
-      <h2>Sessions</h2>
-      <div id="sessionList">Loading...</div>
-    </div>
-
-    <div id="sessionHeader" class="header" style="display: none;">
-      <h1 id="sessionTitle">Session</h1>
-      <div class="meta" id="sessionMeta"></div>
-    </div>
-
-    <div id="messages"></div>
+    <main class="main-content">
+      <div id="sessionHeader" class="header" style="display: none;">
+        <h1 id="sessionTitle">Session</h1>
+        <div class="meta" id="sessionMeta"></div>
+      </div>
+      <div id="messages"></div>
+    </main>
   </div>
 
   <script>
     const rootSelect = document.getElementById('rootSelect');
-    const sessionListDiv = document.getElementById('sessionList');
+    const sessionTree = document.getElementById('sessionTree');
     const messagesDiv = document.getElementById('messages');
     const sessionHeader = document.getElementById('sessionHeader');
     const sessionTitle = document.getElementById('sessionTitle');
     const sessionMeta = document.getElementById('sessionMeta');
 
     let currentRootId = null;
+    let currentSessionId = null;
 
     async function loadRoots() {
       const res = await fetch('/api/roots');
@@ -105,37 +122,88 @@
 
       if (roots.length > 0) {
         currentRootId = roots[0].id;
-        loadSessionList();
+        loadSessionTree();
       }
 
       rootSelect.addEventListener('change', () => {
         currentRootId = rootSelect.value;
-        loadSessionList();
+        loadSessionTree();
       });
     }
 
-    async function loadSessionList() {
+    function buildTree(sessions) {
+      const root = { folders: {}, sessions: [] };
+
+      for (const session of sessions) {
+        const parts = session.relativePath.split('/');
+        const filename = parts.pop();
+
+        let current = root;
+        for (const part of parts) {
+          if (!current.folders[part]) {
+            current.folders[part] = { folders: {}, sessions: [] };
+          }
+          current = current.folders[part];
+        }
+        current.sessions.push(session);
+      }
+
+      return root;
+    }
+
+    function renderTree(node, depth = 0) {
+      let html = '';
+      const indent = depth * 16;
+
+      // Sort and render folders first
+      const folderNames = Object.keys(node.folders).sort();
+      for (const name of folderNames) {
+        const folder = node.folders[name];
+        const childHtml = renderTree(folder, depth + 1);
+        html += `
+          <div class="tree-folder open" style="padding-left: ${indent}px">
+            <div class="tree-folder-header" onclick="this.parentElement.classList.toggle('open')">
+              <span class="tree-toggle">&#9658;</span>
+              <span class="tree-folder-name">${escapeHtml(name)}</span>
+            </div>
+            <div class="tree-folder-children">${childHtml}</div>
+          </div>
+        `;
+      }
+
+      // Render sessions (already sorted by mtime from server)
+      for (const session of node.sessions) {
+        const time = new Date(session.mtime).toLocaleDateString();
+        html += `
+          <div class="tree-session" style="padding-left: ${indent + 20}px" data-id="${session.id}">
+            <span class="tree-session-name" title="${escapeHtml(session.filename)}">${escapeHtml(session.filename)}</span>
+            <span class="tree-session-time">${time}</span>
+          </div>
+        `;
+      }
+
+      return html;
+    }
+
+    async function loadSessionTree() {
       if (!currentRootId) return;
 
-      sessionListDiv.innerHTML = 'Loading...';
+      sessionTree.innerHTML = '<div class="empty-state">Loading...</div>';
       const res = await fetch(`/api/roots/${currentRootId}/sessions`);
       const sessions = await res.json();
 
       if (sessions.length === 0) {
-        sessionListDiv.innerHTML = '<div style="color: #888; padding: 8px;">No sessions found</div>';
+        sessionTree.innerHTML = '<div class="empty-state">No sessions found</div>';
         sessionHeader.style.display = 'none';
         messagesDiv.innerHTML = '';
         return;
       }
 
-      sessionListDiv.innerHTML = sessions.map(s => `
-        <div class="session-item" data-id="${s.id}">
-          <span class="id">${s.filename.slice(0, 20)}${s.filename.length > 20 ? '...' : ''}</span>
-          <span class="time">${new Date(s.mtime).toLocaleString()}</span>
-        </div>
-      `).join('');
+      const tree = buildTree(sessions);
+      sessionTree.innerHTML = renderTree(tree);
 
-      sessionListDiv.querySelectorAll('.session-item').forEach(el => {
+      // Add click handlers for sessions
+      sessionTree.querySelectorAll('.tree-session').forEach(el => {
         el.addEventListener('click', () => loadSession(el.dataset.id));
       });
 
@@ -144,7 +212,10 @@
     }
 
     async function loadSession(id) {
-      document.querySelectorAll('.session-item').forEach(el => {
+      currentSessionId = id;
+
+      // Update active state
+      sessionTree.querySelectorAll('.tree-session').forEach(el => {
         el.classList.toggle('active', el.dataset.id === id);
       });
 
@@ -170,14 +241,13 @@
 
       const { metadata, entries } = data;
 
-      // Show session header
       sessionHeader.style.display = 'block';
       sessionTitle.textContent = metadata.title || 'Session';
       sessionMeta.innerHTML = `
-        ${metadata.timestamp ? `<span>📅 ${formatTime(metadata.timestamp)}</span>` : ''}
-        ${metadata.model ? `<span>🤖 ${escapeHtml(metadata.model)}</span>` : ''}
-        ${metadata.provider ? `<span>🔌 ${escapeHtml(metadata.provider)}</span>` : ''}
-        ${metadata.cwd ? `<span>📁 ${escapeHtml(metadata.cwd)}</span>` : ''}
+        ${metadata.timestamp ? `<span>${formatTime(metadata.timestamp)}</span>` : ''}
+        ${metadata.model ? `<span>${escapeHtml(metadata.model)}</span>` : ''}
+        ${metadata.provider ? `<span>${escapeHtml(metadata.provider)}</span>` : ''}
+        ${metadata.cwd ? `<span>${escapeHtml(metadata.cwd)}</span>` : ''}
       `;
 
       const messages = entries.filter(e => e.type === 'message');
@@ -191,14 +261,13 @@
 
         let contentHtml = '';
 
-        // Handle toolResult messages (from original format)
         if (msg.role === 'toolResult') {
           const resultText = (msg.content || []).map(c => c.text || '').join('\n');
           const errorClass = msg.isError ? ' result-error' : '';
           contentHtml = `<div class="result-container" onclick="this.classList.toggle('open')">
             <div class="result-header">
-              <span class="result-toggle">▶</span>
-              <span class="result-label">📤 ${escapeHtml(msg.toolName || 'result')}${msg.isError ? ' (error)' : ''}</span>
+              <span class="result-toggle">&#9658;</span>
+              <span class="result-label">${escapeHtml(msg.toolName || 'result')}${msg.isError ? ' (error)' : ''}</span>
             </div>
             <div class="result-content${errorClass}">${escapeHtml(resultText)}</div>
           </div>`;
@@ -216,14 +285,14 @@
 
         for (const c of msg.content || []) {
           if (c.type === 'thinking' && c.thinking) {
-            contentHtml += `<div class="thinking"><div class="thinking-label">💭 Thinking</div>${escapeHtml(c.thinking)}</div>`;
+            contentHtml += `<div class="thinking"><div class="thinking-label">Thinking</div>${escapeHtml(c.thinking)}</div>`;
           } else if (c.type === 'text' && c.text) {
             contentHtml += `<div class="text-content">${escapeHtml(c.text)}</div>`;
           } else if (c.type === 'toolCall') {
             contentHtml += `<div class="tool-call" onclick="this.classList.toggle('open')">
               <div class="tool-header">
-                <span class="tool-toggle">▶</span>
-                <span class="tool-name">🔧 ${escapeHtml(c.name)}</span>
+                <span class="tool-toggle">&#9658;</span>
+                <span class="tool-name">${escapeHtml(c.name)}</span>
               </div>
               <div class="tool-args">${escapeHtml(JSON.stringify(c.arguments, null, 2))}</div>
             </div>`;
@@ -231,8 +300,8 @@
             const errorClass = c.is_error ? ' result-error' : '';
             contentHtml += `<div class="result-container" onclick="this.classList.toggle('open')">
               <div class="result-header">
-                <span class="result-toggle">▶</span>
-                <span class="result-label">📤 Tool Result${c.is_error ? ' (error)' : ''}</span>
+                <span class="result-toggle">&#9658;</span>
+                <span class="result-label">Tool Result${c.is_error ? ' (error)' : ''}</span>
               </div>
               <div class="result-content${errorClass}">${escapeHtml(c.content || '')}</div>
             </div>`;
@@ -243,10 +312,10 @@
         if (msg.usage) {
           const u = msg.usage;
           usageHtml = `<div class="usage">
-            <span>↗️ ${u.input || 0} in</span>
-            <span>↘️ ${u.output || 0} out</span>
-            ${u.cacheRead ? `<span>📖 ${u.cacheRead} cache</span>` : ''}
-            <span>💰 $${(u.cost?.total || 0).toFixed(4)}</span>
+            <span>${u.input || 0} in</span>
+            <span>${u.output || 0} out</span>
+            ${u.cacheRead ? `<span>${u.cacheRead} cache</span>` : ''}
+            <span>$${(u.cost?.total || 0).toFixed(4)}</span>
           </div>`;
         }
 
@@ -264,7 +333,6 @@
     }
 
     // SSE for live updates
-    let currentSessionId = null;
     let eventSource = null;
 
     function connectSSE() {
@@ -273,7 +341,7 @@
       eventSource.onmessage = (e) => {
         const event = JSON.parse(e.data);
         if (event.type === 'root:updated' && event.rootId === currentRootId) {
-          loadSessionList();
+          loadSessionTree();
         }
       };
 
@@ -282,13 +350,6 @@
         setTimeout(connectSSE, 3000);
       };
     }
-
-    // Track current session for reload
-    const originalLoadSession = loadSession;
-    loadSession = async function(id) {
-      currentSessionId = id;
-      return originalLoadSession(id);
-    };
 
     loadRoots();
     connectSSE();

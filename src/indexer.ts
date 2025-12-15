@@ -6,6 +6,7 @@ export interface SessionMeta {
   id: string;
   rootId: string;
   path: string;
+  relativePath: string;
   filename: string;
   mtime: number;
   size: number;
@@ -44,6 +45,7 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
         id,
         rootId: root.id,
         path: file,
+        relativePath,
         filename: basename(file),
         mtime: stat.mtime.getTime(),
         size: stat.size,
