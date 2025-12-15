@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Viewer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; padding: 20px; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    .controls { background: #fff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0; display: flex; gap: 16px; align-items: center; }
+    .controls label { font-size: 13px; color: #666; }
+    .controls select { padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; font-size: 14px; min-width: 150px; }
+
+    .session-list { background: #fff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0; }
+    .session-list h2 { font-size: 14px; margin-bottom: 12px; color: #666; }
+    .session-item { padding: 8px 12px; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; font-size: 13px; }
+    .session-item:hover { background: #f0f0f0; }
+    .session-item.active { background: #e7f3ff; }
+    .session-item .time { color: #888; }
+
+    .header { background: #fff; padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e0e0e0; }
+    .header h1 { font-size: 18px; margin-bottom: 8px; }
+    .meta { font-size: 13px; color: #666; display: flex; gap: 16px; flex-wrap: wrap; }
+    .meta span { background: #f0f0f0; padding: 2px 8px; border-radius: 4px; }
+
+    .message { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #e0e0e0; }
+    .message.user { border-left: 4px solid #007bff; }
+    .message.assistant { border-left: 4px solid #28a745; }
+    .message.toolResult { border-left: 4px solid #6f42c1; background: #faf8fc; }
+
+    .message-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+    .role { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .message.user .role { color: #007bff; }
+    .message.assistant .role { color: #28a745; }
+    .message.toolResult .role { color: #6f42c1; }
+    .timestamp { color: #999; }
+
+    .thinking { background: #fff8e6; padding: 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; color: #856404; border: 1px solid #ffeeba; }
+    .thinking-label { font-weight: 600; margin-bottom: 4px; }
+
+    .tool-call { background: #f8f9fa; border-radius: 6px; margin-bottom: 8px; font-family: monospace; font-size: 13px; border: 1px solid #e9ecef; }
+    .tool-header { padding: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
+    .tool-header:hover { background: #eef0f2; border-radius: 6px; }
+    .tool-toggle { width: 20px; height: 20px; border-radius: 4px; background: #dee2e6; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; transition: transform 0.15s; }
+    .tool-call.open .tool-toggle { transform: rotate(90deg); }
+    .tool-name { color: #d63384; font-weight: 600; }
+    .tool-args { color: #495057; padding: 0 12px 12px 40px; overflow-x: auto; white-space: pre-wrap; display: none; }
+    .tool-call.open .tool-args { display: block; }
+
+    .result-container { border: 1px solid #e9ecef; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+    .result-header { padding: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; background: #f8f9fa; }
+    .result-header:hover { background: #eef0f2; }
+    .result-toggle { width: 24px; height: 24px; border-radius: 4px; background: #6f42c1; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: transform 0.15s; }
+    .result-container.open .result-toggle { transform: rotate(90deg); }
+    .result-label { font-weight: 600; color: #6f42c1; }
+    .result-content { padding: 12px; font-family: monospace; font-size: 13px; white-space: pre-wrap; background: #fff; display: none; max-height: 400px; overflow: auto; }
+    .result-container.open .result-content { display: block; }
+    .result-error { color: #dc3545; }
+
+    .usage { font-size: 12px; color: #888; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; display: flex; gap: 12px; flex-wrap: wrap; }
+    .usage span { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+
+    .text-content { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="controls">
+      <label>Agent:</label>
+      <select id="rootSelect"></select>
+    </div>
+
+    <div class="session-list">
+      <h2>Sessions</h2>
+      <div id="sessionList">Loading...</div>
+    </div>
+
+    <div id="sessionHeader" class="header" style="display: none;">
+      <h1 id="sessionTitle">Session</h1>
+      <div class="meta" id="sessionMeta"></div>
+    </div>
+
+    <div id="messages"></div>
+  </div>
+
+  <script>
+    const rootSelect = document.getElementById('rootSelect');
+    const sessionListDiv = document.getElementById('sessionList');
+    const messagesDiv = document.getElementById('messages');
+    const sessionHeader = document.getElementById('sessionHeader');
+    const sessionTitle = document.getElementById('sessionTitle');
+    const sessionMeta = document.getElementById('sessionMeta');
+
+    let currentRootId = null;
+
+    async function loadRoots() {
+      const res = await fetch('/api/roots');
+      const roots = await res.json();
+
+      rootSelect.innerHTML = roots.map(r =>
+        `<option value="${r.id}">${r.label}</option>`
+      ).join('');
+
+      if (roots.length > 0) {
+        currentRootId = roots[0].id;
+        loadSessionList();
+      }
+
+      rootSelect.addEventListener('change', () => {
+        currentRootId = rootSelect.value;
+        loadSessionList();
+      });
+    }
+
+    async function loadSessionList() {
+      if (!currentRootId) return;
+
+      sessionListDiv.innerHTML = 'Loading...';
+      const res = await fetch(`/api/roots/${currentRootId}/sessions`);
+      const sessions = await res.json();
+
+      if (sessions.length === 0) {
+        sessionListDiv.innerHTML = '<div style="color: #888; padding: 8px;">No sessions found</div>';
+        sessionHeader.style.display = 'none';
+        messagesDiv.innerHTML = '';
+        return;
+      }
+
+      sessionListDiv.innerHTML = sessions.map(s => `
+        <div class="session-item" data-id="${s.id}">
+          <span class="id">${s.filename.slice(0, 20)}${s.filename.length > 20 ? '...' : ''}</span>
+          <span class="time">${new Date(s.mtime).toLocaleString()}</span>
+        </div>
+      `).join('');
+
+      sessionListDiv.querySelectorAll('.session-item').forEach(el => {
+        el.addEventListener('click', () => loadSession(el.dataset.id));
+      });
+
+      // Load most recent by default
+      loadSession(sessions[0].id);
+    }
+
+    async function loadSession(id) {
+      document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === id);
+      });
+
+      const res = await fetch(`/api/sessions/${id}`);
+      const data = await res.json();
+      render(data);
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '';
+      return new Date(ts).toLocaleString();
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function render(data) {
+      messagesDiv.innerHTML = '';
+
+      const { metadata, entries } = data;
+
+      // Show session header
+      sessionHeader.style.display = 'block';
+      sessionTitle.textContent = metadata.title || 'Session';
+      sessionMeta.innerHTML = `
+        ${metadata.timestamp ? `<span>📅 ${formatTime(metadata.timestamp)}</span>` : ''}
+        ${metadata.model ? `<span>🤖 ${escapeHtml(metadata.model)}</span>` : ''}
+        ${metadata.provider ? `<span>🔌 ${escapeHtml(metadata.provider)}</span>` : ''}
+        ${metadata.cwd ? `<span>📁 ${escapeHtml(metadata.cwd)}</span>` : ''}
+      `;
+
+      const messages = entries.filter(e => e.type === 'message');
+
+      for (const entry of messages) {
+        const msg = entry.message;
+        if (!msg) continue;
+
+        const div = document.createElement('div');
+        div.className = `message ${msg.role}`;
+
+        let contentHtml = '';
+
+        // Handle toolResult messages (from original format)
+        if (msg.role === 'toolResult') {
+          const resultText = (msg.content || []).map(c => c.text || '').join('\n');
+          const errorClass = msg.isError ? ' result-error' : '';
+          contentHtml = `<div class="result-container" onclick="this.classList.toggle('open')">
+            <div class="result-header">
+              <span class="result-toggle">▶</span>
+              <span class="result-label">📤 ${escapeHtml(msg.toolName || 'result')}${msg.isError ? ' (error)' : ''}</span>
+            </div>
+            <div class="result-content${errorClass}">${escapeHtml(resultText)}</div>
+          </div>`;
+
+          div.innerHTML = `
+            <div class="message-header">
+              <span class="role">Tool Result</span>
+              <span class="timestamp">${formatTime(entry.timestamp)}</span>
+            </div>
+            ${contentHtml}
+          `;
+          messagesDiv.appendChild(div);
+          continue;
+        }
+
+        for (const c of msg.content || []) {
+          if (c.type === 'thinking' && c.thinking) {
+            contentHtml += `<div class="thinking"><div class="thinking-label">💭 Thinking</div>${escapeHtml(c.thinking)}</div>`;
+          } else if (c.type === 'text' && c.text) {
+            contentHtml += `<div class="text-content">${escapeHtml(c.text)}</div>`;
+          } else if (c.type === 'toolCall') {
+            contentHtml += `<div class="tool-call" onclick="this.classList.toggle('open')">
+              <div class="tool-header">
+                <span class="tool-toggle">▶</span>
+                <span class="tool-name">🔧 ${escapeHtml(c.name)}</span>
+              </div>
+              <div class="tool-args">${escapeHtml(JSON.stringify(c.arguments, null, 2))}</div>
+            </div>`;
+          } else if (c.type === 'toolResult') {
+            const errorClass = c.is_error ? ' result-error' : '';
+            contentHtml += `<div class="result-container" onclick="this.classList.toggle('open')">
+              <div class="result-header">
+                <span class="result-toggle">▶</span>
+                <span class="result-label">📤 Tool Result${c.is_error ? ' (error)' : ''}</span>
+              </div>
+              <div class="result-content${errorClass}">${escapeHtml(c.content || '')}</div>
+            </div>`;
+          }
+        }
+
+        let usageHtml = '';
+        if (msg.usage) {
+          const u = msg.usage;
+          usageHtml = `<div class="usage">
+            <span>↗️ ${u.input || 0} in</span>
+            <span>↘️ ${u.output || 0} out</span>
+            ${u.cacheRead ? `<span>📖 ${u.cacheRead} cache</span>` : ''}
+            <span>💰 $${(u.cost?.total || 0).toFixed(4)}</span>
+          </div>`;
+        }
+
+        div.innerHTML = `
+          <div class="message-header">
+            <span class="role">${msg.role}</span>
+            <span class="timestamp">${formatTime(entry.timestamp)}</span>
+          </div>
+          ${contentHtml}
+          ${usageHtml}
+        `;
+
+        messagesDiv.appendChild(div);
+      }
+    }
+
+    // SSE for live updates
+    let currentSessionId = null;
+    let eventSource = null;
+
+    function connectSSE() {
+      eventSource = new EventSource('/api/events');
+
+      eventSource.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+        if (event.type === 'root:updated' && event.rootId === currentRootId) {
+          loadSessionList();
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    // Track current session for reload
+    const originalLoadSession = loadSession;
+    loadSession = async function(id) {
+      currentSessionId = id;
+      return originalLoadSession(id);
+    };
+
+    loadRoots();
+    connectSSE();
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "roots": [
+    {
+      "id": "clawdis",
+      "label": "Clawdis",
+      "path": "~/.clawdis/sessions",
+      "session_glob": "*.jsonl",
+      "format": "pi_agent"
+    },
+    {
+      "id": "pi",
+      "label": "Pi Agent",
+      "path": "~/.pi/agent/sessions",
+      "session_glob": "**/*.jsonl",
+      "format": "pi_agent"
+    },
+    {
+      "id": "factory",
+      "label": "Factory",
+      "path": "~/.factory/sessions",
+      "session_glob": "**/*.jsonl",
+      "format": "factory"
+    }
+  ]
+}
