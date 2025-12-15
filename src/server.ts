@@ -78,6 +78,15 @@ app.get("/api/events", async (c) => {
   });
 });
 
+// SPA fallback for client-side routing
+app.get("*", async (c, next) => {
+  const path = c.req.path;
+  if (path.startsWith("/api/") || path.includes(".")) {
+    return next();
+  }
+  return c.html(await Bun.file("./public/index.html").text());
+});
+
 // Static files
 app.use("/*", serveStatic({ root: "./public" }));
 

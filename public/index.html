@@ -112,6 +112,18 @@
     let currentRootId = null;
     let currentSessionId = null;
 
+    function parseUrl() {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      return { rootId: parts[0] || null, sessionId: parts[1] || null };
+    }
+
+    function updateUrl(rootId, sessionId) {
+      const path = sessionId ? `/${rootId}/${sessionId}` : rootId ? `/${rootId}` : '/';
+      if (window.location.pathname !== path) {
+        history.pushState({ rootId, sessionId }, '', path);
+      }
+    }
+
     async function loadRoots() {
       const res = await fetch('/api/roots');
       const roots = await res.json();
@@ -121,12 +133,17 @@
       ).join('');
 
       if (roots.length > 0) {
-        currentRootId = roots[0].id;
-        loadSessionTree();
+        const { rootId, sessionId } = parseUrl();
+        const matchingRoot = roots.find(r => r.id === rootId);
+        currentRootId = matchingRoot ? rootId : roots[0].id;
+        rootSelect.value = currentRootId;
+        updateUrl(currentRootId, sessionId);
+        loadSessionTree(sessionId);
       }
 
       rootSelect.addEventListener('change', () => {
         currentRootId = rootSelect.value;
+        updateUrl(currentRootId, null);
         loadSessionTree();
       });
     }
@@ -185,7 +202,7 @@
       return html;
     }
 
-    async function loadSessionTree() {
+    async function loadSessionTree(targetSessionId = null) {
       if (!currentRootId) return;
 
       sessionTree.innerHTML = '<div class="empty-state">Loading...</div>';
@@ -207,12 +224,14 @@
         el.addEventListener('click', () => loadSession(el.dataset.id));
       });
 
-      // Load most recent by default
-      loadSession(sessions[0].id);
+      // Load target session if valid, otherwise most recent
+      const targetExists = targetSessionId && sessions.some(s => s.id === targetSessionId);
+      loadSession(targetExists ? targetSessionId : sessions[0].id);
     }
 
     async function loadSession(id) {
       currentSessionId = id;
+      updateUrl(currentRootId, id);
 
       // Update active state
       sessionTree.querySelectorAll('.tree-session').forEach(el => {
@@ -350,6 +369,17 @@
         setTimeout(connectSSE, 3000);
       };
     }
+
+    window.addEventListener('popstate', () => {
+      const { rootId, sessionId } = parseUrl();
+      if (rootId !== currentRootId) {
+        rootSelect.value = rootId;
+        currentRootId = rootId;
+        loadSessionTree(sessionId);
+      } else if (sessionId && sessionId !== currentSessionId) {
+        loadSession(sessionId);
+      }
+    });
 
     loadRoots();
     connectSSE();
