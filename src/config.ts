@@ -7,6 +7,7 @@ export interface Root {
   path: string;
   session_glob: string;
   format: string;
+  folder_masks?: string[];
 }
 
 export interface Config {

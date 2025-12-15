@@ -8,6 +8,7 @@ export interface SessionMeta {
   path: string;
   relativePath: string;
   filename: string;
+  displayName: string;
   mtime: number;
   size: number;
 }
@@ -26,6 +27,16 @@ function hashId(rootId: string, relativePath: string): string {
   return Math.abs(hash).toString(36);
 }
 
+function applyFolderMasks(name: string, masks?: string[]): string {
+  if (!masks) return name;
+  for (const mask of masks) {
+    if (name.startsWith(mask)) {
+      return name.slice(mask.length);
+    }
+  }
+  return name;
+}
+
 export async function scanRoot(root: Root): Promise<SessionMeta[]> {
   const sessions: SessionMeta[] = [];
   const glob = new Glob(root.session_glob);
@@ -40,13 +51,15 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
 
       const relativePath = relative(root.path, file);
       const id = hashId(root.id, relativePath);
+      const filename = basename(file);
 
       const meta: SessionMeta = {
         id,
         rootId: root.id,
         path: file,
         relativePath,
-        filename: basename(file),
+        filename,
+        displayName: applyFolderMasks(relativePath, root.folder_masks),
         mtime: stat.mtime.getTime(),
         size: stat.size,
       };

@@ -135,7 +135,7 @@
       const root = { folders: {}, sessions: [] };
 
       for (const session of sessions) {
-        const parts = session.relativePath.split('/');
+        const parts = session.displayName.split('/');
         const filename = parts.pop();
 
         let current = root;
