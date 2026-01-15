@@ -169,13 +169,23 @@ export async function parseClaudeProjects(filePath: string): Promise<ParsedSessi
       metadata.model = model;
     }
 
+    // Normalize usage data from Claude's format to our format
+    const rawUsage = (message as any).usage as Record<string, unknown> | undefined;
+    const hasUsage = rawUsage && (rawUsage.input_tokens || rawUsage.output_tokens);
+    const usage = hasUsage ? {
+      input: rawUsage.input_tokens as number | undefined,
+      output: rawUsage.output_tokens as number | undefined,
+      cacheRead: rawUsage.cache_read_input_tokens as number | undefined,
+      cacheWrite: rawUsage.cache_creation_input_tokens as number | undefined,
+    } : undefined;
+
     entries.push({
       type: "message",
       timestamp,
       message: {
         role,
         content: blocks,
-        usage: (message as any).usage as any,
+        usage,
       },
     });
   }

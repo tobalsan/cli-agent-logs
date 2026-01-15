@@ -98,3 +98,51 @@ function extractClaudeProjects(lines: string[]): string | undefined {
   }
   return undefined;
 }
+
+export interface TokenTotals {
+  input: number;
+  output: number;
+  cacheRead: number;
+}
+
+export async function extractTokenTotals(
+  filePath: string,
+  format: string
+): Promise<TokenTotals | undefined> {
+  try {
+    const file = Bun.file(filePath);
+    const text = await file.text();
+    const lines = text.split("\n");
+
+    let input = 0;
+    let output = 0;
+    let cacheRead = 0;
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        let usage: Record<string, unknown> | undefined;
+
+        if (format === "claude_projects" && entry.type === "assistant") {
+          usage = entry.message?.usage;
+        } else if (format === "pi_agent" && entry.type === "message" && entry.message?.role === "assistant") {
+          usage = entry.message?.usage;
+        }
+
+        if (usage) {
+          input += (usage.input_tokens as number) || (usage.input as number) || 0;
+          output += (usage.output_tokens as number) || (usage.output as number) || 0;
+          cacheRead += (usage.cache_read_input_tokens as number) || (usage.cacheRead as number) || 0;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (input === 0 && output === 0) return undefined;
+    return { input, output, cacheRead };
+  } catch {
+    return undefined;
+  }
+}

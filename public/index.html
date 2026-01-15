@@ -159,6 +159,12 @@
       padding: 3px 8px;
       border-radius: 4px;
     }
+    .session-meta .tokens {
+      color: var(--text-secondary);
+      background: transparent;
+      padding: 3px 0;
+      margin-left: auto;
+    }
 
     .empty-state {
       color: var(--text-muted);
@@ -405,6 +411,12 @@
       return new Date(ts).toLocaleString();
     }
 
+    function formatTokens(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+      return n.toString();
+    }
+
     function parseUrl() {
       const parts = window.location.pathname.split('/').filter(Boolean);
       return { rootId: parts[0] || null, sessionId: parts[1] || null };
@@ -503,6 +515,7 @@
         const folder = parts.join('/') || '';
         const time = new Date(s.mtime).toLocaleDateString();
         const prompt = s.initialPrompt || filename;
+        const tokensHtml = s.tokens ? `<span class="tokens">${formatTokens(s.tokens.input + s.tokens.cacheRead)} in · ${formatTokens(s.tokens.output)} out</span>` : '';
 
         return `
           <div class="session-item" onclick="loadSession('${s.id}')">
@@ -511,6 +524,7 @@
               <span>${time}</span>
               ${folder ? `<span>${escapeHtml(folder)}</span>` : ''}
               <span>${escapeHtml(filename)}</span>
+              ${tokensHtml}
             </div>
           </div>
         `;
