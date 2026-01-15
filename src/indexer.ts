@@ -1,5 +1,6 @@
-import { join, relative, basename } from "path";
+import { relative, basename } from "path";
 import { Glob } from "bun";
+import { stat } from "fs/promises";
 import type { Root } from "./config";
 
 export interface SessionMeta {
@@ -39,6 +40,15 @@ function applyFolderMasks(name: string, masks?: string[]): string {
 
 export async function scanRoot(root: Root): Promise<SessionMeta[]> {
   const sessions: SessionMeta[] = [];
+
+  // If the configured root folder doesn't exist, don't crash the server.
+  try {
+    await stat(root.path);
+  } catch {
+    sessionIndex.set(root.id, sessions);
+    return sessions;
+  }
+
   const glob = new Glob(root.session_glob);
 
   for await (const file of glob.scan({ cwd: root.path, absolute: true })) {
@@ -46,8 +56,7 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
     if (file.endsWith(".settings.json")) continue;
 
     try {
-      const stat = await Bun.file(file).stat();
-      if (!stat) continue;
+      const st = await stat(file);
 
       const relativePath = relative(root.path, file);
       const id = hashId(root.id, relativePath);
@@ -60,8 +69,8 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
         relativePath,
         filename,
         displayName: applyFolderMasks(relativePath, root.folder_masks),
-        mtime: stat.mtime.getTime(),
-        size: stat.size,
+        mtime: st.mtime.getTime(),
+        size: st.size,
       };
 
       sessions.push(meta);

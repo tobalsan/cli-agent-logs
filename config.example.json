@@ -20,6 +20,14 @@
       "path": "~/.factory/sessions",
       "session_glob": "**/*.jsonl",
       "format": "factory"
+    },
+    {
+      "id": "claude",
+      "label": "Claude (projects)",
+      "path": "~/.claude/projects",
+      "session_glob": "**/*.jsonl",
+      "format": "claude_projects",
+      "folder_masks": ["-Users-thinh-", "-"]
     }
   ]
 }

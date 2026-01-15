@@ -36,7 +36,7 @@ Create `config.json` with your session log roots:
 | `label` | Display name |
 | `path` | Directory containing session logs |
 | `session_glob` | Glob pattern for session files |
-| `format` | Log format (`pi_agent` or `factory`) |
+| `format` | Log format (`pi_agent`, `factory`, or `claude_projects`) |
 
 ## Custom Parsers
 

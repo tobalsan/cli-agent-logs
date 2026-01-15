@@ -1,5 +1,6 @@
 import { parsePiAgent } from "./pi_agent";
 import { parseFactory } from "./factory";
+import { parseClaudeProjects } from "./claude_projects";
 
 export interface ParsedSession {
   metadata: {
@@ -45,6 +46,7 @@ type Parser = (filePath: string) => Promise<ParsedSession>;
 const parsers: Record<string, Parser> = {
   pi_agent: parsePiAgent,
   factory: parseFactory,
+  claude_projects: parseClaudeProjects,
 };
 
 export function getParser(format: string): Parser | undefined {

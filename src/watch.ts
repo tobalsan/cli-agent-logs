@@ -14,7 +14,7 @@ export function watchRoot(root: Root, onChange: WatchCallback): void {
   }
 
   try {
-    const watcher = watch(root.path, { recursive: true }, (event, filename) => {
+    const watcher = watch(root.path, { recursive: true }, (_event, filename) => {
       if (!filename?.endsWith(".jsonl")) return;
 
       // Debounce rapid changes
@@ -33,6 +33,11 @@ export function watchRoot(root: Root, onChange: WatchCallback): void {
     watchers.set(root.id, watcher);
     console.log(`Watching ${root.path}`);
   } catch (err) {
+    // If a configured root doesn't exist, don't spam the console with a full stack trace.
+    if ((err as any)?.code === "ENOENT") {
+      console.warn(`Watch skipped (missing path): ${root.path}`);
+      return;
+    }
     console.error(`Failed to watch ${root.path}:`, err);
   }
 }
