@@ -126,10 +126,10 @@
       background: var(--bg-tertiary);
     }
 
-    .session-list { display: flex; flex-direction: column; gap: 8px; }
+    .session-list { display: flex; flex-direction: column; gap: 12px; }
     .session-item {
       display: block;
-      padding: 16px 20px;
+      padding: 20px;
       background: var(--bg-secondary);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
@@ -140,24 +140,24 @@
       background: var(--bg-tertiary);
       border-color: var(--border);
     }
-    .session-folder {
-      color: var(--text-muted);
-      font-size: 12px;
-      font-family: var(--font-mono);
-      margin-bottom: 6px;
-      word-break: break-all;
-    }
-    .session-filename {
-      font-weight: 500;
+    .session-prompt {
       font-size: 15px;
       color: var(--text-primary);
-      word-break: break-all;
+      line-height: 1.5;
+      margin-bottom: 12px;
     }
-    .session-time {
-      color: var(--text-muted);
+    .session-meta {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
       font-size: 11px;
       font-family: var(--font-mono);
-      margin-top: 8px;
+      color: var(--text-muted);
+    }
+    .session-meta span {
+      background: var(--bg-tertiary);
+      padding: 3px 8px;
+      border-radius: 4px;
     }
 
     .empty-state {
@@ -500,14 +500,18 @@
       sessionList.innerHTML = top10.map(s => {
         const parts = s.displayName.split('/');
         const filename = parts.pop();
-        const folder = parts.join('/') || '—';
+        const folder = parts.join('/') || '';
         const time = new Date(s.mtime).toLocaleDateString();
+        const prompt = s.initialPrompt || filename;
 
         return `
           <div class="session-item" onclick="loadSession('${s.id}')">
-            <div class="session-folder">${escapeHtml(folder)}</div>
-            <div class="session-filename">${escapeHtml(filename)}</div>
-            <div class="session-time">${time}</div>
+            <div class="session-prompt">${escapeHtml(prompt)}</div>
+            <div class="session-meta">
+              <span>${time}</span>
+              ${folder ? `<span>${escapeHtml(folder)}</span>` : ''}
+              <span>${escapeHtml(filename)}</span>
+            </div>
           </div>
         `;
       }).join('');
