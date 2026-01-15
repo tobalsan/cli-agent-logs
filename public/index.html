@@ -168,7 +168,7 @@
       return root;
     }
 
-    function renderTree(node, depth = 0) {
+    function renderTree(node, depth = 0, path = '') {
       let html = '';
       const indent = depth * 16;
 
@@ -176,9 +176,10 @@
       const folderNames = Object.keys(node.folders).sort();
       for (const name of folderNames) {
         const folder = node.folders[name];
-        const childHtml = renderTree(folder, depth + 1);
+        const folderPath = path ? `${path}/${name}` : name;
+        const childHtml = renderTree(folder, depth + 1, folderPath);
         html += `
-          <div class="tree-folder open" style="padding-left: ${indent}px">
+          <div class="tree-folder open" data-path="${escapeHtml(folderPath)}" style="padding-left: ${indent}px">
             <div class="tree-folder-header" onclick="this.parentElement.classList.toggle('open')">
               <span class="tree-toggle">&#9658;</span>
               <span class="tree-folder-name">${escapeHtml(name)}</span>
@@ -202,10 +203,22 @@
       return html;
     }
 
-    async function loadSessionTree(targetSessionId = null) {
+    async function loadSessionTree(targetSessionId = null, preserveState = false) {
       if (!currentRootId) return;
 
-      sessionTree.innerHTML = '<div class="empty-state">Loading...</div>';
+      // Preserve scroll position and folder states if requested
+      const scrollTop = preserveState ? sessionTree.scrollTop : 0;
+      const openFolders = new Set();
+      if (preserveState) {
+        sessionTree.querySelectorAll('.tree-folder.open').forEach(el => {
+          openFolders.add(el.dataset.path);
+        });
+      }
+
+      if (!preserveState) {
+        sessionTree.innerHTML = '<div class="empty-state">Loading...</div>';
+      }
+
       const res = await fetch(`/api/roots/${currentRootId}/sessions`);
       const sessions = await res.json();
 
@@ -219,14 +232,30 @@
       const tree = buildTree(sessions);
       sessionTree.innerHTML = renderTree(tree);
 
+      // Restore folder states
+      if (preserveState && openFolders.size > 0) {
+        sessionTree.querySelectorAll('.tree-folder').forEach(el => {
+          if (!openFolders.has(el.dataset.path)) {
+            el.classList.remove('open');
+          }
+        });
+      }
+
       // Add click handlers for sessions
       sessionTree.querySelectorAll('.tree-session').forEach(el => {
         el.addEventListener('click', () => loadSession(el.dataset.id));
       });
 
-      // Load target session if valid, otherwise most recent
-      const targetExists = targetSessionId && sessions.some(s => s.id === targetSessionId);
-      loadSession(targetExists ? targetSessionId : sessions[0].id);
+      // Restore scroll position
+      if (preserveState) {
+        sessionTree.scrollTop = scrollTop;
+      }
+
+      // Load target session if valid, otherwise most recent (skip if preserving state)
+      if (!preserveState) {
+        const targetExists = targetSessionId && sessions.some(s => s.id === targetSessionId);
+        loadSession(targetExists ? targetSessionId : sessions[0].id);
+      }
     }
 
     async function loadSession(id) {
@@ -360,7 +389,7 @@
       eventSource.onmessage = (e) => {
         const event = JSON.parse(e.data);
         if (event.type === 'root:updated' && event.rootId === currentRootId) {
-          loadSessionTree();
+          loadSessionTree(null, true);
         }
       };
 
