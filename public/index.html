@@ -32,128 +32,150 @@
       background: var(--bg-primary);
       color: var(--text-primary);
       line-height: 1.6;
-      height: 100vh;
-      overflow: hidden;
+      min-height: 100vh;
     }
 
-    .app-layout { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
+    .view { display: none; }
+    .view.active { display: block; }
 
-    .sidebar {
-      background: var(--bg-secondary);
-      border-right: 1px solid var(--border-subtle);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+    /* === AGENT SELECTION VIEW === */
+    .view-agents {
+      min-height: 100vh;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
     }
-    .sidebar-header {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .sidebar-header label {
-      font-size: 11px;
+    .view-agents.active { display: flex; }
+
+    .agents-container { max-width: 800px; width: 100%; }
+    .agents-title {
+      font-size: 14px;
       font-weight: 500;
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      display: block;
-      margin-bottom: 8px;
+      letter-spacing: 0.1em;
+      margin-bottom: 24px;
+      text-align: center;
     }
-    .sidebar-header select {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .agent-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 32px 24px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    .agent-card:hover {
       background: var(--bg-tertiary);
-      color: var(--text-primary);
-      font-family: var(--font-sans);
-      font-size: 13px;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
+      border-color: var(--border);
+      transform: translateY(-2px);
     }
-    .sidebar-header select:hover {
-      border-color: var(--text-muted);
-    }
-    .sidebar-header select:focus {
-      outline: none;
-      border-color: var(--accent-user);
+    .agent-card-name {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
     }
 
-    .session-tree { flex: 1; overflow-y: auto; padding: 12px 8px; }
-    .session-tree::-webkit-scrollbar { width: 6px; }
-    .session-tree::-webkit-scrollbar-track { background: transparent; }
-    .session-tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    .session-tree::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    /* === SESSION LIST VIEW === */
+    .view-sessions { padding: 40px; max-width: 900px; margin: 0 auto; }
 
-    .tree-folder { user-select: none; }
-    .tree-folder-header {
-      display: flex;
+    .back-link {
+      display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 10px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      border-radius: 6px;
-      transition: all 0.15s;
-    }
-    .tree-folder-header:hover { background: var(--bg-hover); color: var(--text-primary); }
-    .tree-toggle {
-      width: 16px;
-      font-size: 9px;
+      gap: 8px;
       color: var(--text-muted);
-      flex-shrink: 0;
-      transition: transform 0.2s ease;
-    }
-    .tree-folder.open > .tree-folder-header .tree-toggle { transform: rotate(90deg); }
-    .tree-folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tree-folder-children { display: none; }
-    .tree-folder.open > .tree-folder-children { display: block; }
-
-    .tree-session {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 10px;
+      font-size: 13px;
       cursor: pointer;
-      font-size: 12px;
-      gap: 12px;
-      border-radius: 6px;
-      transition: all 0.15s;
-    }
-    .tree-session:hover { background: var(--bg-hover); }
-    .tree-session.active {
-      background: var(--bg-tertiary);
-      box-shadow: inset 2px 0 0 var(--accent-user);
-    }
-    .tree-session-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      flex: 1;
-      color: var(--text-secondary);
+      margin-bottom: 32px;
       transition: color 0.15s;
     }
-    .tree-session:hover .tree-session-name,
-    .tree-session.active .tree-session-name { color: var(--text-primary); }
-    .tree-session-time { color: var(--text-muted); font-size: 11px; flex-shrink: 0; font-family: var(--font-mono); }
+    .back-link:hover { color: var(--text-primary); }
+    .back-link svg { width: 16px; height: 16px; }
 
-    .main-content {
-      overflow-y: auto;
-      padding: 32px 40px;
-      background: var(--bg-primary);
+    .sessions-header {
+      margin-bottom: 32px;
     }
-    .main-content::-webkit-scrollbar { width: 8px; }
-    .main-content::-webkit-scrollbar-track { background: transparent; }
-    .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-    .main-content::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    .sessions-title {
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .search-input {
+      width: 100%;
+      padding: 14px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .search-input::placeholder { color: var(--text-muted); }
+    .search-input:focus {
+      outline: none;
+      border-color: var(--accent-user);
+      background: var(--bg-tertiary);
+    }
 
-    .header {
+    .session-list { display: flex; flex-direction: column; gap: 8px; }
+    .session-item {
+      display: block;
+      padding: 16px 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .session-item:hover {
+      background: var(--bg-tertiary);
+      border-color: var(--border);
+    }
+    .session-folder {
+      color: var(--text-muted);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+    .session-filename {
+      font-weight: 500;
+      font-size: 15px;
+      color: var(--text-primary);
+      word-break: break-all;
+    }
+    .session-time {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      margin-top: 8px;
+    }
+
+    .empty-state {
+      color: var(--text-muted);
+      text-align: center;
+      padding: 48px 24px;
+      font-size: 14px;
+    }
+
+    /* === SESSION DETAIL VIEW === */
+    .view-detail { padding: 40px; max-width: 900px; margin: 0 auto; }
+
+    .detail-header {
       margin-bottom: 32px;
       padding-bottom: 24px;
       border-bottom: 1px solid var(--border-subtle);
     }
-    .header h1 {
+    .detail-header h1 {
       font-size: 20px;
       font-weight: 600;
       margin-bottom: 12px;
@@ -314,41 +336,74 @@
     .usage span { background: var(--bg-tertiary); padding: 3px 8px; border-radius: 4px; }
 
     .text-content { white-space: pre-wrap; color: var(--text-primary); line-height: 1.7; }
-
-    .empty-state { color: var(--text-muted); padding: 24px; text-align: center; font-size: 13px; }
   </style>
 </head>
 <body>
-  <div class="app-layout">
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <label>Agent</label>
-        <select id="rootSelect"></select>
-      </div>
-      <div class="session-tree" id="sessionTree">
-        <div class="empty-state">Loading...</div>
-      </div>
-    </aside>
+  <!-- Agent Selection View -->
+  <div id="viewAgents" class="view view-agents active">
+    <div class="agents-container">
+      <div class="agents-title">Select Agent</div>
+      <div id="agentsGrid" class="agents-grid"></div>
+    </div>
+  </div>
 
-    <main class="main-content">
-      <div id="sessionHeader" class="header" style="display: none;">
-        <h1 id="sessionTitle">Session</h1>
-        <div class="meta" id="sessionMeta"></div>
-      </div>
-      <div id="messages"></div>
-    </main>
+  <!-- Session List View -->
+  <div id="viewSessions" class="view view-sessions">
+    <div class="back-link" onclick="showAgents()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </div>
+    <div class="sessions-header">
+      <h1 id="sessionsTitle" class="sessions-title"></h1>
+      <input type="text" id="searchInput" class="search-input" placeholder="Filter by folder name...">
+    </div>
+    <div id="sessionList" class="session-list"></div>
+  </div>
+
+  <!-- Session Detail View -->
+  <div id="viewDetail" class="view view-detail">
+    <div class="back-link" onclick="showSessions()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to sessions
+    </div>
+    <div id="detailHeader" class="detail-header">
+      <h1 id="detailTitle"></h1>
+      <div class="meta" id="detailMeta"></div>
+    </div>
+    <div id="messages"></div>
   </div>
 
   <script>
-    const rootSelect = document.getElementById('rootSelect');
-    const sessionTree = document.getElementById('sessionTree');
-    const messagesDiv = document.getElementById('messages');
-    const sessionHeader = document.getElementById('sessionHeader');
-    const sessionTitle = document.getElementById('sessionTitle');
-    const sessionMeta = document.getElementById('sessionMeta');
-
+    // State
+    let roots = [];
     let currentRootId = null;
+    let currentSessions = [];
     let currentSessionId = null;
+
+    // Elements
+    const viewAgents = document.getElementById('viewAgents');
+    const viewSessions = document.getElementById('viewSessions');
+    const viewDetail = document.getElementById('viewDetail');
+    const agentsGrid = document.getElementById('agentsGrid');
+    const sessionsTitle = document.getElementById('sessionsTitle');
+    const searchInput = document.getElementById('searchInput');
+    const sessionList = document.getElementById('sessionList');
+    const detailTitle = document.getElementById('detailTitle');
+    const detailMeta = document.getElementById('detailMeta');
+    const messagesDiv = document.getElementById('messages');
+
+    // Utilities
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '';
+      return new Date(ts).toLocaleString();
+    }
 
     function parseUrl() {
       const parts = window.location.pathname.split('/').filter(Boolean);
@@ -362,180 +417,127 @@
       }
     }
 
+    // View switching
+    function showView(view) {
+      viewAgents.classList.remove('active');
+      viewSessions.classList.remove('active');
+      viewDetail.classList.remove('active');
+      view.classList.add('active');
+    }
+
+    function showAgents() {
+      currentRootId = null;
+      currentSessionId = null;
+      updateUrl(null, null);
+      showView(viewAgents);
+    }
+
+    function showSessions() {
+      currentSessionId = null;
+      updateUrl(currentRootId, null);
+      searchInput.value = '';
+      renderSessionList();
+      showView(viewSessions);
+    }
+
+    // Agent selection
     async function loadRoots() {
       const res = await fetch('/api/roots');
-      const roots = await res.json();
+      roots = await res.json();
 
-      rootSelect.innerHTML = roots.map(r =>
-        `<option value="${r.id}">${r.label}</option>`
-      ).join('');
+      agentsGrid.innerHTML = roots.map(r => `
+        <div class="agent-card" onclick="selectAgent('${r.id}')">
+          <div class="agent-card-name">${escapeHtml(r.label)}</div>
+        </div>
+      `).join('');
 
-      if (roots.length > 0) {
-        const { rootId, sessionId } = parseUrl();
-        const matchingRoot = roots.find(r => r.id === rootId);
-        currentRootId = matchingRoot ? rootId : roots[0].id;
-        rootSelect.value = currentRootId;
-        updateUrl(currentRootId, sessionId);
-        loadSessionTree(sessionId);
+      // Handle initial URL routing
+      const { rootId, sessionId } = parseUrl();
+      if (rootId && roots.some(r => r.id === rootId)) {
+        await selectAgent(rootId, sessionId);
       }
-
-      rootSelect.addEventListener('change', () => {
-        currentRootId = rootSelect.value;
-        updateUrl(currentRootId, null);
-        loadSessionTree();
-      });
     }
 
-    function buildTree(sessions) {
-      const root = { folders: {}, sessions: [] };
+    async function selectAgent(rootId, sessionId = null) {
+      currentRootId = rootId;
+      const root = roots.find(r => r.id === rootId);
+      sessionsTitle.textContent = root?.label || rootId;
 
-      for (const session of sessions) {
-        const parts = session.displayName.split('/');
-        const filename = parts.pop();
+      const res = await fetch(`/api/roots/${rootId}/sessions`);
+      currentSessions = await res.json();
 
-        let current = root;
-        for (const part of parts) {
-          if (!current.folders[part]) {
-            current.folders[part] = { folders: {}, sessions: [] };
-          }
-          current = current.folders[part];
-        }
-        current.sessions.push(session);
+      searchInput.value = '';
+      renderSessionList();
+
+      if (sessionId && currentSessions.some(s => s.id === sessionId)) {
+        await loadSession(sessionId);
+      } else {
+        updateUrl(rootId, null);
+        showView(viewSessions);
       }
-
-      return root;
     }
 
-    function renderTree(node, depth = 0, path = '') {
-      let html = '';
-      const indent = depth * 16;
+    // Session list
+    function renderSessionList() {
+      const query = searchInput.value.toLowerCase().trim();
+      let filtered = currentSessions;
 
-      // Sort and render folders first
-      const folderNames = Object.keys(node.folders).sort();
-      for (const name of folderNames) {
-        const folder = node.folders[name];
-        const folderPath = path ? `${path}/${name}` : name;
-        const childHtml = renderTree(folder, depth + 1, folderPath);
-        html += `
-          <div class="tree-folder open" data-path="${escapeHtml(folderPath)}" style="padding-left: ${indent}px">
-            <div class="tree-folder-header" onclick="this.parentElement.classList.toggle('open')">
-              <span class="tree-toggle">&#9658;</span>
-              <span class="tree-folder-name">${escapeHtml(name)}</span>
-            </div>
-            <div class="tree-folder-children">${childHtml}</div>
-          </div>
-        `;
-      }
-
-      // Render sessions (already sorted by mtime from server)
-      for (const session of node.sessions) {
-        const time = new Date(session.mtime).toLocaleDateString();
-        html += `
-          <div class="tree-session" style="padding-left: ${indent + 20}px" data-id="${session.id}">
-            <span class="tree-session-name" title="${escapeHtml(session.filename)}">${escapeHtml(session.filename)}</span>
-            <span class="tree-session-time">${time}</span>
-          </div>
-        `;
-      }
-
-      return html;
-    }
-
-    async function loadSessionTree(targetSessionId = null, preserveState = false) {
-      if (!currentRootId) return;
-
-      // Preserve scroll position and folder states if requested
-      const scrollTop = preserveState ? sessionTree.scrollTop : 0;
-      const openFolders = new Set();
-      if (preserveState) {
-        sessionTree.querySelectorAll('.tree-folder.open').forEach(el => {
-          openFolders.add(el.dataset.path);
+      if (query) {
+        filtered = currentSessions.filter(s => {
+          const parts = s.displayName.split('/');
+          const folder = parts.slice(0, -1).join('/').toLowerCase();
+          return folder.includes(query);
         });
       }
 
-      if (!preserveState) {
-        sessionTree.innerHTML = '<div class="empty-state">Loading...</div>';
-      }
+      const top10 = filtered.slice(0, 10);
 
-      const res = await fetch(`/api/roots/${currentRootId}/sessions`);
-      const sessions = await res.json();
-
-      if (sessions.length === 0) {
-        sessionTree.innerHTML = '<div class="empty-state">No sessions found</div>';
-        sessionHeader.style.display = 'none';
-        messagesDiv.innerHTML = '';
+      if (top10.length === 0) {
+        sessionList.innerHTML = '<div class="empty-state">No sessions found</div>';
         return;
       }
 
-      const tree = buildTree(sessions);
-      sessionTree.innerHTML = renderTree(tree);
+      sessionList.innerHTML = top10.map(s => {
+        const parts = s.displayName.split('/');
+        const filename = parts.pop();
+        const folder = parts.join('/') || '—';
+        const time = new Date(s.mtime).toLocaleDateString();
 
-      // Restore folder states
-      if (preserveState && openFolders.size > 0) {
-        sessionTree.querySelectorAll('.tree-folder').forEach(el => {
-          if (!openFolders.has(el.dataset.path)) {
-            el.classList.remove('open');
-          }
-        });
-      }
-
-      // Add click handlers for sessions
-      sessionTree.querySelectorAll('.tree-session').forEach(el => {
-        el.addEventListener('click', () => loadSession(el.dataset.id));
-      });
-
-      // Restore scroll position
-      if (preserveState) {
-        sessionTree.scrollTop = scrollTop;
-      }
-
-      // Load target session if valid, otherwise most recent (skip if preserving state)
-      if (!preserveState) {
-        const targetExists = targetSessionId && sessions.some(s => s.id === targetSessionId);
-        loadSession(targetExists ? targetSessionId : sessions[0].id);
-      }
+        return `
+          <div class="session-item" onclick="loadSession('${s.id}')">
+            <div class="session-folder">${escapeHtml(folder)}</div>
+            <div class="session-filename">${escapeHtml(filename)}</div>
+            <div class="session-time">${time}</div>
+          </div>
+        `;
+      }).join('');
     }
 
+    searchInput.addEventListener('input', renderSessionList);
+
+    // Session detail
     async function loadSession(id) {
       currentSessionId = id;
       updateUrl(currentRootId, id);
 
-      // Update active state
-      sessionTree.querySelectorAll('.tree-session').forEach(el => {
-        el.classList.toggle('active', el.dataset.id === id);
-      });
-
       const res = await fetch(`/api/sessions/${id}`);
       const data = await res.json();
-      render(data);
+      renderDetail(data);
+      showView(viewDetail);
     }
 
-    function formatTime(ts) {
-      if (!ts) return '';
-      return new Date(ts).toLocaleString();
-    }
-
-    function escapeHtml(str) {
-      if (!str) return '';
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    function render(data) {
-      messagesDiv.innerHTML = '';
-
+    function renderDetail(data) {
       const { metadata, entries } = data;
 
-      sessionHeader.style.display = 'block';
-      sessionTitle.textContent = metadata.title || 'Session';
-      sessionMeta.innerHTML = `
+      detailTitle.textContent = metadata.title || 'Session';
+      detailMeta.innerHTML = `
         ${metadata.timestamp ? `<span>${formatTime(metadata.timestamp)}</span>` : ''}
         ${metadata.model ? `<span>${escapeHtml(metadata.model)}</span>` : ''}
         ${metadata.provider ? `<span>${escapeHtml(metadata.provider)}</span>` : ''}
         ${metadata.cwd ? `<span>${escapeHtml(metadata.cwd)}</span>` : ''}
       `;
 
+      messagesDiv.innerHTML = '';
       const messages = entries.filter(e => e.type === 'message');
 
       for (const entry of messages) {
@@ -624,10 +626,14 @@
     function connectSSE() {
       eventSource = new EventSource('/api/events');
 
-      eventSource.onmessage = (e) => {
+      eventSource.onmessage = async (e) => {
         const event = JSON.parse(e.data);
         if (event.type === 'root:updated' && event.rootId === currentRootId) {
-          loadSessionTree(null, true);
+          const res = await fetch(`/api/roots/${currentRootId}/sessions`);
+          currentSessions = await res.json();
+          if (viewSessions.classList.contains('active')) {
+            renderSessionList();
+          }
         }
       };
 
@@ -637,17 +643,22 @@
       };
     }
 
-    window.addEventListener('popstate', () => {
+    // Browser navigation
+    window.addEventListener('popstate', async () => {
       const { rootId, sessionId } = parseUrl();
-      if (rootId !== currentRootId) {
-        rootSelect.value = rootId;
-        currentRootId = rootId;
-        loadSessionTree(sessionId);
+
+      if (!rootId) {
+        showAgents();
+      } else if (rootId !== currentRootId) {
+        await selectAgent(rootId, sessionId);
       } else if (sessionId && sessionId !== currentSessionId) {
-        loadSession(sessionId);
+        await loadSession(sessionId);
+      } else if (!sessionId && currentSessionId) {
+        showSessions();
       }
     });
 
+    // Init
     loadRoots();
     connectSSE();
   </script>
