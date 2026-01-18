@@ -20,6 +20,7 @@ export interface SessionEntry {
   message?: {
     role: string;
     content: ContentBlock[];
+    model?: string;
     usage?: {
       input?: number;
       output?: number;

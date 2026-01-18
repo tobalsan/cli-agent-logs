@@ -615,9 +615,10 @@
         }
 
         let usageHtml = '';
-        if (msg.usage) {
-          const u = msg.usage;
+        if (msg.usage || msg.model) {
+          const u = msg.usage || {};
           usageHtml = `<div class="usage">
+            ${msg.model ? `<span>${escapeHtml(msg.model)}</span>` : ''}
             <span>${u.input || 0} in</span>
             <span>${u.output || 0} out</span>
             ${u.cacheRead ? `<span>${u.cacheRead} cache</span>` : ''}

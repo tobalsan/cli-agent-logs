@@ -185,6 +185,7 @@ export async function parseClaudeProjects(filePath: string): Promise<ParsedSessi
       message: {
         role,
         content: blocks,
+        model,
         usage,
       },
     });
