@@ -109,7 +109,7 @@ async function main() {
     }
   });
 
-  const port = 3000;
+  const port = 3002;
   console.log(`Server running at http://localhost:${port}`);
 
   Bun.serve({

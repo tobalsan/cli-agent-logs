@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-bun run dev    # Dev server with hot reload (port 3000)
+bun run dev    # Dev server with hot reload (port 3002)
 bun run start  # Production server
 ```
 
