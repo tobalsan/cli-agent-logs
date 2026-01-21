@@ -1,6 +1,7 @@
 import { parsePiAgent } from "./pi_agent";
 import { parseFactory } from "./factory";
 import { parseClaudeProjects } from "./claude_projects";
+import { parseAihub } from "./aihub";
 
 export interface ParsedSession {
   metadata: {
@@ -48,6 +49,7 @@ const parsers: Record<string, Parser> = {
   pi_agent: parsePiAgent,
   factory: parseFactory,
   claude_projects: parseClaudeProjects,
+  aihub: parseAihub,
 };
 
 export function getParser(format: string): Parser | undefined {
