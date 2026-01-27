@@ -1,38 +1,92 @@
 import type { ParsedSession, SessionEntry, ContentBlock } from "./index";
 
-interface AihubEntry {
+/**
+ * Parser for AiHub sessions - supports two formats:
+ *
+ * Format A (legacy): type: "session" | "model_change" | "message"
+ * Format B (claude-like): type: "user" | "assistant"
+ */
+
+type AihubLine = Record<string, unknown>;
+
+type AihubContentBlock = {
   type: string;
+  text?: string;
+  thinking?: string;
   id?: string;
-  parentId?: string;
-  timestamp?: string;
-  version?: number;
-  cwd?: string;
-  provider?: string;
-  modelId?: string;
-  thinkingLevel?: string;
-  message?: {
-    role: string;
-    content: Array<{
-      type: string;
-      text?: string;
-      thinking?: string;
-      id?: string;
-      name?: string;
-      arguments?: Record<string, unknown>;
-      content?: Array<{ type: string; text?: string }>;
-      isError?: boolean;
-    }>;
-    timestamp?: number;
-  };
-  api?: string;
-  model?: string;
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadInputTokens?: number;
-    cacheWriteInputTokens?: number;
-    cost?: { total?: number };
-  };
+  name?: string;
+  input?: Record<string, unknown>;
+  arguments?: Record<string, unknown>;
+  tool_use_id?: string;
+  content?: string | Array<{ type: string; text?: string }>;
+  is_error?: boolean;
+  isError?: boolean;
+};
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function normalizeContentBlocks(blocks: AihubContentBlock[]): ContentBlock[] {
+  return blocks.map((b) => {
+    // Claude API format
+    if (b.type === "tool_use") {
+      return {
+        type: "toolCall",
+        name: b.name,
+        arguments: b.input,
+        tool_use_id: b.id,
+      };
+    }
+
+    // Legacy aihub format
+    if (b.type === "toolCall") {
+      return {
+        type: "toolCall",
+        name: b.name,
+        arguments: b.arguments,
+      };
+    }
+
+    if (b.type === "tool_result" || b.type === "toolResult") {
+      let contentStr: string | undefined;
+      if (typeof b.content === "string") {
+        contentStr = b.content;
+      } else if (Array.isArray(b.content)) {
+        contentStr = b.content.map((c) => c.text).filter(Boolean).join("\n");
+      }
+      return {
+        type: "toolResult",
+        tool_use_id: b.tool_use_id ?? b.id,
+        content: contentStr,
+        is_error: b.is_error ?? b.isError,
+      };
+    }
+
+    if (b.type === "thinking") {
+      return {
+        type: "thinking",
+        thinking: b.thinking,
+      };
+    }
+
+    return {
+      type: b.type,
+      text: b.text,
+    };
+  });
+}
+
+function coerceUserContentToText(content: unknown): ContentBlock[] {
+  if (typeof content === "string") {
+    return [{ type: "text", text: content }];
+  }
+
+  if (Array.isArray(content)) {
+    return normalizeContentBlocks(content as AihubContentBlock[]);
+  }
+
+  return [{ type: "text", text: JSON.stringify(content) }];
 }
 
 export async function parseAihub(filePath: string): Promise<ParsedSession> {
@@ -46,72 +100,122 @@ export async function parseAihub(filePath: string): Promise<ParsedSession> {
   let currentProvider: string | undefined;
 
   for (const line of lines) {
-    const entry = JSON.parse(line) as AihubEntry;
+    let obj: AihubLine;
+    try {
+      obj = JSON.parse(line) as AihubLine;
+    } catch {
+      continue;
+    }
 
-    if (entry.type === "session") {
+    const type = asString(obj.type);
+
+    // Format A: legacy aihub format
+    if (type === "session") {
       metadata = {
-        id: entry.id || "",
-        timestamp: entry.timestamp,
-        cwd: entry.cwd,
+        id: asString(obj.id) || "",
+        timestamp: asString(obj.timestamp),
+        cwd: asString(obj.cwd),
       };
-      entries.push({ type: "session", timestamp: entry.timestamp });
-    } else if (entry.type === "model_change") {
-      currentModel = entry.modelId;
-      currentProvider = entry.provider;
+      entries.push({ type: "session", timestamp: asString(obj.timestamp) });
+      continue;
+    }
+
+    if (type === "model_change") {
+      currentModel = asString(obj.modelId);
+      currentProvider = asString(obj.provider);
       if (!metadata.model) {
         metadata.model = currentModel;
         metadata.provider = currentProvider;
       }
-    } else if (entry.type === "message" && entry.message) {
-      const content: ContentBlock[] = entry.message.content.map((c) => {
-        if (c.type === "toolCall") {
-          return {
-            type: "toolCall",
-            name: c.name,
-            arguments: c.arguments,
-          };
-        } else if (c.type === "toolResult") {
-          const resultText = c.content
-            ?.map((r) => r.text)
-            .filter(Boolean)
-            .join("\n");
-          return {
-            type: "toolResult",
-            tool_use_id: c.id,
-            content: resultText,
-            is_error: c.isError,
-          };
-        } else if (c.type === "thinking") {
-          return {
-            type: "thinking",
-            thinking: c.thinking,
-          };
-        }
-        return {
-          type: c.type,
-          text: c.text,
+      continue;
+    }
+
+    if (type === "message" && obj.message) {
+      const msg = obj.message as Record<string, unknown>;
+      const role = asString(msg.role);
+      const contentRaw = msg.content as AihubContentBlock[] | undefined;
+
+      if (contentRaw) {
+        const content = normalizeContentBlocks(contentRaw);
+        const rawUsage = obj.usage as Record<string, unknown> | undefined;
+
+        entries.push({
+          type: "message",
+          timestamp: asString(obj.timestamp),
+          message: {
+            role: role === "toolResult" ? "user" : (role || "assistant"),
+            content,
+            model: asString(obj.model) || currentModel,
+            usage: rawUsage
+              ? {
+                  input: rawUsage.inputTokens as number | undefined,
+                  output: rawUsage.outputTokens as number | undefined,
+                  cacheRead: rawUsage.cacheReadInputTokens as number | undefined,
+                  cacheWrite: rawUsage.cacheWriteInputTokens as number | undefined,
+                  cost: rawUsage.cost as { total?: number } | undefined,
+                }
+              : undefined,
+          },
+        });
+      }
+      continue;
+    }
+
+    // Format B: claude-like format (type: "user" | "assistant")
+    if (type === "user" || type === "assistant") {
+      const timestamp = asString(obj.timestamp);
+      const cwd = asString(obj.cwd);
+      const sessionId = asString(obj.sessionId) || asString(obj.id);
+
+      if (!metadata.id) {
+        metadata = {
+          id: sessionId || "",
+          timestamp,
+          cwd,
+          provider: "anthropic",
         };
-      });
+        entries.push({ type: "session", timestamp });
+      }
+
+      const message = obj.message as Record<string, unknown> | undefined;
+      if (!message) continue;
+
+      const role = asString((message as any).role) || type;
+      const contentRaw = (message as any).content;
+      const blocks = Array.isArray(contentRaw)
+        ? normalizeContentBlocks(contentRaw as AihubContentBlock[])
+        : coerceUserContentToText(contentRaw);
+
+      const model = asString((message as any).model);
+      if (model && !metadata.model) {
+        metadata.model = model;
+      }
+
+      const rawUsage = (message as any).usage as Record<string, unknown> | undefined;
+      const hasUsage = rawUsage && (rawUsage.input_tokens || rawUsage.output_tokens);
 
       entries.push({
         type: "message",
-        timestamp: entry.timestamp,
+        timestamp,
         message: {
-          role: entry.message.role === "toolResult" ? "user" : entry.message.role,
-          content,
-          model: entry.model || currentModel,
-          usage: entry.usage
+          role,
+          content: blocks,
+          model,
+          usage: hasUsage
             ? {
-                input: entry.usage.inputTokens,
-                output: entry.usage.outputTokens,
-                cacheRead: entry.usage.cacheReadInputTokens,
-                cacheWrite: entry.usage.cacheWriteInputTokens,
-                cost: entry.usage.cost,
+                input: rawUsage.input_tokens as number | undefined,
+                output: rawUsage.output_tokens as number | undefined,
+                cacheRead: rawUsage.cache_read_input_tokens as number | undefined,
+                cacheWrite: rawUsage.cache_creation_input_tokens as number | undefined,
               }
             : undefined,
         },
       });
     }
+  }
+
+  if (!metadata.id) {
+    metadata = { id: "" };
   }
 
   return { metadata, entries };
