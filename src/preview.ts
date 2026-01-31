@@ -22,6 +22,8 @@ export async function extractInitialPrompt(
         return extractFactory(lines);
       case "claude_projects":
         return extractClaudeProjects(lines);
+      case "codex":
+        return extractCodex(lines);
       default:
         return undefined;
     }
@@ -99,6 +101,26 @@ function extractClaudeProjects(lines: string[]): string | undefined {
   return undefined;
 }
 
+function extractCodex(lines: string[]): string | undefined {
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      // Codex format: { type: "response_item", payload: { type: "message", role: "user", content: [...] } }
+      if (entry.type === "response_item" && entry.payload?.type === "message" && entry.payload?.role === "user") {
+        const content = entry.payload.content;
+        if (Array.isArray(content)) {
+          const textBlock = content.find((c: { type: string }) => c.type === "input_text" || c.type === "text");
+          if (textBlock?.text) return truncate(textBlock.text);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
 export interface TokenTotals {
   input: number;
   output: number;
@@ -128,6 +150,14 @@ export async function extractTokenTotals(
           usage = entry.message?.usage;
         } else if (format === "pi_agent" && entry.type === "message" && entry.message?.role === "assistant") {
           usage = entry.message?.usage;
+        } else if (format === "codex" && entry.type === "event_msg" && entry.payload?.type === "token_count") {
+          const info = entry.payload?.info;
+          if (info) {
+            input += (info.input_tokens as number) || 0;
+            output += (info.output_tokens as number) || 0;
+            cacheRead += (info.cached_tokens as number) || 0;
+          }
+          continue;
         }
 
         if (usage) {
