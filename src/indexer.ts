@@ -58,12 +58,16 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
     // Skip settings files for factory format
     if (file.endsWith(".settings.json")) continue;
 
+    // Skip warmup files (Claude Code agent warmup sessions)
+    const fn = basename(file);
+    if (fn.startsWith("agent-") && fn.endsWith(".jsonl")) continue;
+
     try {
       const st = await stat(file);
 
       const relativePath = relative(root.path, file);
       const id = hashId(root.id, relativePath);
-      const filename = basename(file);
+      const filename = fn;
 
       const [initialPrompt, tokens] = await Promise.all([
         extractInitialPrompt(file, root.format),
