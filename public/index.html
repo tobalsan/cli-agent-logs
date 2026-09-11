@@ -22,6 +22,13 @@
       --accent-assistant: #10b981;
       --accent-tool: #a78bfa;
       --accent-thinking: #f59e0b;
+      --outline-user: #3b82f6;
+      --outline-assistant: #10b981;
+      --outline-thinking: #c084fc;
+      --outline-tool-call: #f59e0b;
+      --outline-tool-result: #71717a;
+      --outline-system: #52525b;
+      --outline-subagent: #a78bfa;
       --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
       --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
     }
@@ -194,6 +201,57 @@
       border-radius: 4px;
       font-family: var(--font-mono);
       border: 1px solid var(--border-subtle);
+    }
+
+    /* === DETAIL OUTLINE SIDEBAR === */
+    .detail-outline {
+      position: fixed;
+      top: 40px;
+      left: 24px;
+      width: 220px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .detail-outline::-webkit-scrollbar { width: 6px; }
+    .detail-outline::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    @media (max-width: 900px) {
+      .detail-outline { display: none; }
+    }
+    .outline-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background-color 0.15s ease-out, color 0.15s ease-out;
+    }
+    .outline-row:hover { background: var(--bg-hover); }
+    .outline-row.active { background: var(--bg-tertiary); color: var(--text-primary); }
+    .outline-glyph { flex-shrink: 0; width: 10px; text-align: center; font-size: 10px; }
+    .outline-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .outline-row.type-user .outline-glyph { color: var(--outline-user); }
+    .outline-row.type-assistant .outline-glyph { color: var(--outline-assistant); }
+    .outline-row.type-thinking .outline-glyph { color: var(--outline-thinking); }
+    .outline-row.type-tool-call .outline-glyph { color: var(--outline-tool-call); }
+    .outline-row.type-tool-result .outline-glyph { color: var(--outline-tool-result); }
+    .outline-row.type-system .outline-glyph { color: var(--outline-system); }
+    .outline-row.type-subagent .outline-glyph { color: var(--outline-subagent); }
+
+    @keyframes outline-flash {
+      0% { box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.6); }
+      100% { box-shadow: 0 0 0 2px rgba(167, 139, 250, 0); }
+    }
+    .message.flash, .subagent-card.flash {
+      animation: outline-flash 1s ease-out;
     }
 
     .message {
@@ -447,6 +505,7 @@
 
   <!-- Session Detail View -->
   <div id="viewDetail" class="view view-detail">
+    <nav id="detailOutline" class="detail-outline"></nav>
     <div class="back-link" onclick="showSessions()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       Back to sessions
@@ -476,6 +535,7 @@
     const detailTitle = document.getElementById('detailTitle');
     const detailMeta = document.getElementById('detailMeta');
     const messagesDiv = document.getElementById('messages');
+    const detailOutline = document.getElementById('detailOutline');
 
     // Utilities
     function escapeHtml(str) {
@@ -520,6 +580,7 @@
       currentRootId = null;
       currentSessionId = null;
       updateUrl(null, null);
+      clearOutline();
       showView(viewAgents);
     }
 
@@ -528,6 +589,7 @@
       updateUrl(currentRootId, null);
       searchInput.value = '';
       renderSessionList();
+      clearOutline();
       showView(viewSessions);
     }
 
@@ -626,6 +688,70 @@
     // Sub-agent handling
     const subagentCache = new Map();
 
+    // Outline sidebar (top-level timeline overview)
+    let outlineObserver = null;
+
+    function clearOutline() {
+      if (outlineObserver) {
+        outlineObserver.disconnect();
+        outlineObserver = null;
+      }
+      detailOutline.innerHTML = '';
+    }
+
+    // Classifies a top-level timeline entry for the outline row, mirroring
+    // the same content inspection buildMessageElement uses to render it.
+    function classifyEntry(entry) {
+      const msg = entry.message;
+      if (!msg) return { type: 'system', label: '?' };
+
+      if (msg.role === 'toolResult') {
+        return { type: 'tool-result', label: msg.toolName || 'Result' };
+      }
+      if (msg.role === 'system') {
+        return { type: 'system', label: 'Context' };
+      }
+
+      const content = msg.content || [];
+      const toolCall = content.find(c => c.type === 'toolCall');
+      if (toolCall) {
+        return { type: 'tool-call', label: toolCall.name || 'Tool Call' };
+      }
+      const toolResult = content.find(c => c.type === 'toolResult');
+      if (toolResult) {
+        return { type: 'tool-result', label: 'Result' };
+      }
+      const hasText = content.some(c => c.type === 'text' && c.text);
+      const hasThinking = content.some(c => c.type === 'thinking' && c.thinking);
+      if (hasThinking && !hasText) {
+        return { type: 'thinking', label: 'Thinking' };
+      }
+      if (msg.role === 'user') return { type: 'user', label: 'User' };
+      if (msg.role === 'assistant') return { type: 'assistant', label: 'Assistant' };
+      return { type: 'system', label: msg.role || '?' };
+    }
+
+    function buildOutlineRow(targetId, type, label) {
+      const row = document.createElement('div');
+      row.className = `outline-row type-${type}`;
+      row.dataset.target = targetId;
+      const glyph = type === 'subagent' ? '⑂' : '●';
+      row.innerHTML = `<span class="outline-glyph">${glyph}</span><span class="outline-label">${escapeHtml(label)}</span>`;
+      row.addEventListener('click', () => jumpToOutlineEntry(targetId));
+      return row;
+    }
+
+    function jumpToOutlineEntry(targetId) {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      // Smooth-scroll only nearby targets; long jumps are instant to stay responsive
+      const distance = Math.abs(el.getBoundingClientRect().top);
+      el.scrollIntoView({ behavior: distance > window.innerHeight * 3 ? 'auto' : 'smooth', block: 'center' });
+      el.classList.remove('flash');
+      void el.offsetWidth; // restart the flash animation
+      el.classList.add('flash');
+    }
+
     function parseSubagentStart(filename) {
       const m = filename && filename.match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
       if (!m) return null;
@@ -647,6 +773,19 @@
       if (!tokens) return null;
       const total = (tokens.input || 0) + (tokens.output || 0) + (tokens.cacheRead || 0);
       return total > 0 ? total : null;
+    }
+
+    // Shared markup for a collapsed tool-result block, used both for standalone
+    // tool-result cards and for results merged into their matching tool-call.
+    function toolResultBlockHtml(c) {
+      const errorClass = c.is_error ? ' result-error' : '';
+      return `<div class="result-container" onclick="this.classList.toggle('open')">
+            <div class="result-header">
+              <span class="result-toggle">&#9658;</span>
+              <span class="result-label">Tool Result${c.is_error ? ' (error)' : ''}</span>
+            </div>
+            <div class="result-content${errorClass}">${escapeHtml(c.content || '')}</div>
+          </div>`;
     }
 
     // Renders a single timeline entry (message or tool result) into a DOM element.
@@ -710,14 +849,7 @@
             <div class="tool-args">${escapeHtml(JSON.stringify(c.arguments, null, 2))}</div>
           </div>`;
         } else if (c.type === 'toolResult') {
-          const errorClass = c.is_error ? ' result-error' : '';
-          contentHtml += `<div class="result-container" onclick="this.classList.toggle('open')">
-            <div class="result-header">
-              <span class="result-toggle">&#9658;</span>
-              <span class="result-label">Tool Result${c.is_error ? ' (error)' : ''}</span>
-            </div>
-            <div class="result-content${errorClass}">${escapeHtml(c.content || '')}</div>
-          </div>`;
+          contentHtml += toolResultBlockHtml(c);
         }
       }
 
@@ -811,8 +943,26 @@
     }
 
     // Renders entries interleaved with sub-agent cards, sorted by time. Reusable at any depth.
+    // At depth 0 (the top-level transcript, not nested sub-agent bodies) it also builds one
+    // outline row per rendered element and wires up scroll-spy tracking for it.
     function renderMessages(entries, container, subagents, depth) {
       container.innerHTML = '';
+
+      const isTop = !depth;
+      if (isTop) {
+        clearOutline();
+        outlineObserver = new IntersectionObserver((observed) => {
+          for (const obs of observed) {
+            if (!obs.isIntersecting) continue;
+            const row = detailOutline.querySelector(`.outline-row[data-target="${obs.target.id}"]`);
+            if (!row) continue;
+            const prev = detailOutline.querySelector('.outline-row.active');
+            if (prev) prev.classList.remove('active');
+            row.classList.add('active');
+            row.scrollIntoView({ block: 'nearest' });
+          }
+        }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
+      }
 
       const items = (entries || [])
         .filter(e => e.type === 'message')
@@ -825,12 +975,29 @@
 
       items.sort((a, b) => a.time - b.time);
 
+      let tlIndex = 0;
       for (const item of items) {
         if (item.kind === 'message') {
           const el = buildMessageElement(item.entry);
-          if (el) container.appendChild(el);
+          if (!el) continue;
+          container.appendChild(el);
+          if (isTop) {
+            const id = `tl-${tlIndex++}`;
+            el.id = id;
+            const info = classifyEntry(item.entry);
+            detailOutline.appendChild(buildOutlineRow(id, info.type, info.label));
+            outlineObserver.observe(el);
+          }
         } else {
-          container.appendChild(buildSubagentCard(item.sub, depth || 0));
+          const card = buildSubagentCard(item.sub, depth || 0);
+          container.appendChild(card);
+          if (isTop) {
+            const id = `tl-${tlIndex++}`;
+            card.id = id;
+            const label = item.sub.agentNickname || 'Sub-agent';
+            detailOutline.appendChild(buildOutlineRow(id, 'subagent', label));
+            outlineObserver.observe(card);
+          }
         }
       }
     }
