@@ -126,10 +126,13 @@ export async function parseCodex(filePath: string): Promise<ParsedSession> {
             }
           }
 
+          const combined = blocks.map((b) => b.text || "").join("\n").trim();
+          const isInjected = combined.startsWith("<") || combined.startsWith("# AGENTS.md instructions");
+
           entries.push({
             type: "message",
             timestamp,
-            message: { role: "user", content: blocks },
+            message: { role: isInjected ? "system" : "user", content: blocks },
           });
           currentTimestamp = timestamp;
         } else if (role === "assistant") {
@@ -153,6 +156,33 @@ export async function parseCodex(filePath: string): Promise<ParsedSession> {
           }
           currentTimestamp = timestamp;
         }
+        continue;
+      }
+
+      // Subagent task message
+      if (itemType === "agent_message") {
+        const contentRaw = payload.content as unknown[] | undefined;
+        const blocks: ContentBlock[] = [];
+        if (Array.isArray(contentRaw)) {
+          for (const item of contentRaw) {
+            const itemObj = item as Record<string, unknown>;
+            const t = asString(itemObj.type);
+            if (t === "input_text" || t === "text") {
+              blocks.push({ type: "text", text: asString(itemObj.text) });
+            } else if (t === "encrypted_content" || typeof itemObj.encrypted_content === "string") {
+              blocks.push({ type: "text", text: "[payload encrypted by OpenAI, not locally readable]" });
+            }
+          }
+        }
+        if (blocks.length > 0) {
+          flushAssistantMessage();
+          entries.push({
+            type: "message",
+            timestamp,
+            message: { role: "user", content: blocks },
+          });
+        }
+        currentTimestamp = timestamp;
         continue;
       }
 

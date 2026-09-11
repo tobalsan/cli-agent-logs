@@ -3,7 +3,7 @@
  * Only reads enough lines to find the first user message.
  */
 
-const MAX_LINES = 50; // Don't read more than this many lines
+const MAX_LINES = 200; // Don't read more than this many lines
 const MAX_PROMPT_LENGTH = 200; // Truncate long prompts
 
 export async function extractInitialPrompt(
@@ -102,6 +102,14 @@ function extractClaudeProjects(lines: string[]): string | undefined {
 }
 
 function extractCodex(lines: string[]): string | undefined {
+  // Injected context, not real prompts: messages wrapped in tags like
+  // <recommended_plugins>, <environment_context>, <turn_aborted>, or AGENTS.md dumps
+  const isInjected = (text: string) =>
+    text.startsWith("<") || text.startsWith("# AGENTS.md instructions");
+
+  let agentTask: string | undefined;
+  let firstOutput: string | undefined;
+
   for (const line of lines) {
     if (!line.trim()) continue;
     try {
@@ -111,14 +119,74 @@ function extractCodex(lines: string[]): string | undefined {
         const content = entry.payload.content;
         if (Array.isArray(content)) {
           const textBlock = content.find((c: { type: string }) => c.type === "input_text" || c.type === "text");
-          if (textBlock?.text) return truncate(textBlock.text);
+          const text = textBlock?.text?.trim();
+          if (text && !isInjected(text)) return truncate(text);
+        }
+      }
+      // Subagent sessions have no real user message; task arrives as agent_message
+      if (!agentTask && entry.type === "response_item" && entry.payload?.type === "agent_message") {
+        const content = entry.payload.content;
+        if (Array.isArray(content)) {
+          const textBlock = content.find((c: { type: string }) => c.type === "input_text" || c.type === "text");
+          const text = textBlock?.text?.trim();
+          if (text) agentTask = text;
+        }
+      }
+      // Capture first assistant output or reasoning summary as fallback preview
+      if (!firstOutput && entry.type === "response_item" && entry.payload?.type === "message" && entry.payload?.role === "assistant") {
+        const content = entry.payload.content;
+        if (Array.isArray(content)) {
+          const textBlock = content.find((c: { type: string }) => c.type === "output_text" || c.type === "text");
+          const text = textBlock?.text?.trim();
+          if (text) firstOutput = text;
+        }
+      }
+      if (!firstOutput && entry.type === "response_item" && entry.payload?.type === "reasoning") {
+        const summary = entry.payload.summary;
+        if (Array.isArray(summary)) {
+          const summaryBlock = summary.find((s: { text?: string }) => s.text?.trim());
+          const text = summaryBlock?.text?.trim();
+          if (text) firstOutput = text;
         }
       }
     } catch {
       continue;
     }
   }
-  return undefined;
+  if (agentTask) {
+    if (/Payload:\s*$/.test(agentTask) && firstOutput) return truncate(firstOutput);
+    return truncate(agentTask);
+  }
+  return firstOutput ? truncate(firstOutput) : undefined;
+}
+
+export interface CodexSessionInfo {
+  nativeId?: string;
+  threadSource?: string;
+  parentThreadId?: string;
+  agentNickname?: string;
+  agentPath?: string;
+}
+
+export async function extractCodexSessionInfo(filePath: string): Promise<CodexSessionInfo | undefined> {
+  try {
+    const file = Bun.file(filePath);
+    const text = await file.text();
+    const firstLine = text.slice(0, text.indexOf("\n") === -1 ? text.length : text.indexOf("\n"));
+    const entry = JSON.parse(firstLine);
+    if (entry.type !== "session_meta") return undefined;
+
+    const payload = entry.payload;
+    return {
+      nativeId: typeof payload?.id === "string" ? payload.id : undefined,
+      threadSource: typeof payload?.thread_source === "string" ? payload.thread_source : undefined,
+      parentThreadId: typeof payload?.parent_thread_id === "string" ? payload.parent_thread_id : undefined,
+      agentNickname: typeof payload?.agent_nickname === "string" ? payload.agent_nickname : undefined,
+      agentPath: typeof payload?.agent_path === "string" ? payload.agent_path : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export interface TokenTotals {
