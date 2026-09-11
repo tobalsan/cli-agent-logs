@@ -223,6 +223,7 @@
       font-size: 11px;
     }
     .message.user .role { color: var(--accent-user); }
+    .message.system .role { color: var(--text-dim, #888); }
     .message.assistant .role { color: var(--accent-assistant); }
     .message.toolResult .role { color: var(--accent-tool); }
     .timestamp { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
@@ -342,6 +343,84 @@
     .usage span { background: var(--bg-tertiary); padding: 3px 8px; border-radius: 4px; }
 
     .text-content { white-space: pre-wrap; color: var(--text-primary); line-height: 1.7; }
+
+    /* === SUB-AGENT CARDS === */
+    .subagent-card {
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      margin-bottom: 16px;
+      background: var(--bg-secondary);
+      overflow: hidden;
+    }
+    .subagent-header {
+      padding: 14px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .subagent-header:hover { background: var(--bg-hover); }
+    .subagent-toggle {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      transition: transform 0.15s ease-out;
+    }
+    .subagent-card.open .subagent-toggle { transform: rotate(90deg); }
+    .subagent-info { flex: 1; min-width: 0; }
+    .subagent-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+    .subagent-glyph { color: var(--text-muted); font-family: var(--font-mono); }
+    .subagent-label { font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; color: var(--text-secondary); }
+    .subagent-nickname { color: var(--accent-user); font-weight: 500; }
+    .subagent-path { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+    .subagent-prompt {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .subagent-side {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .subagent-body.hidden { display: none; }
+    .subagent-nested {
+      margin: 0 16px 16px 16px;
+      padding: 12px 12px 12px 20px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      background: var(--bg-tertiary);
+      position: relative;
+    }
+    .subagent-nested::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 12px;
+      bottom: 12px;
+      width: 1px;
+      background: var(--border);
+    }
+    .subagent-loading { color: var(--text-muted); font-size: 12px; padding: 4px 0; }
   </style>
 </head>
 <body>
@@ -544,8 +623,220 @@
       showView(viewDetail);
     }
 
+    // Sub-agent handling
+    const subagentCache = new Map();
+
+    function parseSubagentStart(filename) {
+      const m = filename && filename.match(/rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+      if (!m) return null;
+      const [, y, mo, d, h, mi, s] = m;
+      return new Date(+y, +mo - 1, +d, +h, +mi, +s).getTime();
+    }
+
+    function humanizeDuration(ms) {
+      const totalSec = Math.round(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function tokenTotal(tokens) {
+      if (!tokens) return null;
+      const total = (tokens.input || 0) + (tokens.output || 0) + (tokens.cacheRead || 0);
+      return total > 0 ? total : null;
+    }
+
+    // Renders a single timeline entry (message or tool result) into a DOM element.
+    function buildMessageElement(entry) {
+      const msg = entry.message;
+      if (!msg) return null;
+
+      const div = document.createElement('div');
+      div.className = `message ${msg.role}`;
+
+      if (msg.role === 'toolResult') {
+        const resultText = (msg.content || []).map(c => c.text || '').join('\n');
+        const errorClass = msg.isError ? ' result-error' : '';
+        div.innerHTML = `
+          <div class="message-header">
+            <span class="role">Tool Result</span>
+            <span class="timestamp">${formatTime(entry.timestamp)}</span>
+          </div>
+          <div class="result-container" onclick="this.classList.toggle('open')">
+            <div class="result-header">
+              <span class="result-toggle">&#9658;</span>
+              <span class="result-label">${escapeHtml(msg.toolName || 'result')}${msg.isError ? ' (error)' : ''}</span>
+            </div>
+            <div class="result-content${errorClass}">${escapeHtml(resultText)}</div>
+          </div>
+        `;
+        return div;
+      }
+
+      if (msg.role === 'system') {
+        const text = (msg.content || []).map(c => c.text || '').join('\n');
+        const firstLine = text.trim().split('\n')[0].slice(0, 80);
+        div.innerHTML = `
+          <div class="message-header">
+            <span class="role">Injected Context</span>
+            <span class="timestamp">${formatTime(entry.timestamp)}</span>
+          </div>
+          <div class="result-container" onclick="this.classList.toggle('open')">
+            <div class="result-header">
+              <span class="result-toggle">&#9658;</span>
+              <span class="result-label">${escapeHtml(firstLine)}</span>
+            </div>
+            <div class="result-content">${escapeHtml(text)}</div>
+          </div>
+        `;
+        return div;
+      }
+
+      let contentHtml = '';
+      for (const c of msg.content || []) {
+        if (c.type === 'thinking' && c.thinking) {
+          contentHtml += `<div class="thinking"><div class="thinking-label">Thinking</div>${escapeHtml(c.thinking)}</div>`;
+        } else if (c.type === 'text' && c.text) {
+          contentHtml += `<div class="text-content">${escapeHtml(c.text)}</div>`;
+        } else if (c.type === 'toolCall') {
+          contentHtml += `<div class="tool-call" onclick="this.classList.toggle('open')">
+            <div class="tool-header">
+              <span class="tool-toggle">&#9658;</span>
+              <span class="tool-name">${escapeHtml(c.name)}</span>
+            </div>
+            <div class="tool-args">${escapeHtml(JSON.stringify(c.arguments, null, 2))}</div>
+          </div>`;
+        } else if (c.type === 'toolResult') {
+          const errorClass = c.is_error ? ' result-error' : '';
+          contentHtml += `<div class="result-container" onclick="this.classList.toggle('open')">
+            <div class="result-header">
+              <span class="result-toggle">&#9658;</span>
+              <span class="result-label">Tool Result${c.is_error ? ' (error)' : ''}</span>
+            </div>
+            <div class="result-content${errorClass}">${escapeHtml(c.content || '')}</div>
+          </div>`;
+        }
+      }
+
+      let usageHtml = '';
+      if (msg.usage || msg.model) {
+        const u = msg.usage || {};
+        usageHtml = `<div class="usage">
+          ${msg.model ? `<span>${escapeHtml(msg.model)}</span>` : ''}
+          <span>${u.input || 0} in</span>
+          <span>${u.output || 0} out</span>
+          ${u.cacheRead ? `<span>${u.cacheRead} cache</span>` : ''}
+          <span>$${(u.cost?.total || 0).toFixed(4)}</span>
+        </div>`;
+      }
+
+      div.innerHTML = `
+        <div class="message-header">
+          <span class="role">${msg.role}</span>
+          <span class="timestamp">${formatTime(entry.timestamp)}</span>
+        </div>
+        ${contentHtml}
+        ${usageHtml}
+      `;
+
+      return div;
+    }
+
+    // Builds a collapsed sub-agent card; expands to fetch + render its nested transcript.
+    function buildSubagentCard(sub, depth) {
+      const card = document.createElement('div');
+      card.className = 'subagent-card';
+      card.dataset.depth = String(depth || 0);
+
+      const start = parseSubagentStart(sub.filename);
+      const durMs = (start != null && sub.mtime != null) ? Math.max(0, sub.mtime - start) : null;
+      const duration = durMs != null ? humanizeDuration(durMs) : null;
+      const total = tokenTotal(sub.tokens);
+      const nickname = sub.agentNickname || '';
+      const path = sub.agentPath || '';
+      const promptText = sub.initialPrompt || sub.filename || '';
+
+      const header = document.createElement('div');
+      header.className = 'subagent-header';
+      header.innerHTML = `
+        <span class="subagent-toggle">&#9658;</span>
+        <div class="subagent-info">
+          <div class="subagent-title">
+            <span class="subagent-glyph">⑂</span>
+            <span class="subagent-label">Sub-agent</span>
+            ${nickname ? `<span class="subagent-nickname">${escapeHtml(nickname)}</span>` : ''}
+            ${path ? `<span class="subagent-path">${escapeHtml(path)}</span>` : ''}
+          </div>
+          <div class="subagent-prompt">${escapeHtml(promptText)}</div>
+        </div>
+        <div class="subagent-side">
+          ${duration ? `<span class="subagent-duration">${escapeHtml(duration)}</span>` : ''}
+          ${total ? `<span class="subagent-tokens">${formatTokens(total)} tok</span>` : ''}
+        </div>
+      `;
+
+      const body = document.createElement('div');
+      body.className = 'subagent-body hidden';
+      const nested = document.createElement('div');
+      nested.className = 'subagent-nested';
+      body.appendChild(nested);
+
+      let loaded = false;
+      header.addEventListener('click', async () => {
+        const isOpen = card.classList.toggle('open');
+        body.classList.toggle('hidden', !isOpen);
+        if (isOpen && !loaded) {
+          loaded = true;
+          nested.innerHTML = '<div class="subagent-loading">loading…</div>';
+          try {
+            let data = subagentCache.get(sub.id);
+            if (!data) {
+              const res = await fetch(`/api/sessions/${sub.id}`);
+              data = await res.json();
+              subagentCache.set(sub.id, data);
+            }
+            renderMessages(data.entries, nested, data.subagents, (depth || 0) + 1);
+          } catch (err) {
+            nested.innerHTML = '<div class="subagent-loading">failed to load</div>';
+          }
+        }
+      });
+
+      card.appendChild(header);
+      card.appendChild(body);
+      return card;
+    }
+
+    // Renders entries interleaved with sub-agent cards, sorted by time. Reusable at any depth.
+    function renderMessages(entries, container, subagents, depth) {
+      container.innerHTML = '';
+
+      const items = (entries || [])
+        .filter(e => e.type === 'message')
+        .map(entry => ({ kind: 'message', entry, time: entry.timestamp ? new Date(entry.timestamp).getTime() : 0 }));
+
+      for (const sub of subagents || []) {
+        const start = parseSubagentStart(sub.filename);
+        items.push({ kind: 'subagent', sub, time: start != null ? start : (sub.mtime || 0) });
+      }
+
+      items.sort((a, b) => a.time - b.time);
+
+      for (const item of items) {
+        if (item.kind === 'message') {
+          const el = buildMessageElement(item.entry);
+          if (el) container.appendChild(el);
+        } else {
+          container.appendChild(buildSubagentCard(item.sub, depth || 0));
+        }
+      }
+    }
+
     function renderDetail(data) {
-      const { metadata, entries } = data;
+      const { metadata, entries, subagents } = data;
 
       detailTitle.textContent = metadata.title || 'Session';
       detailMeta.innerHTML = `
@@ -553,90 +844,10 @@
         ${metadata.model ? `<span>${escapeHtml(metadata.model)}</span>` : ''}
         ${metadata.provider ? `<span>${escapeHtml(metadata.provider)}</span>` : ''}
         ${metadata.cwd ? `<span>${escapeHtml(metadata.cwd)}</span>` : ''}
+        ${subagents && subagents.length ? `<span>⑂ ${subagents.length} sub-agents</span>` : ''}
       `;
 
-      messagesDiv.innerHTML = '';
-      const messages = entries.filter(e => e.type === 'message');
-
-      for (const entry of messages) {
-        const msg = entry.message;
-        if (!msg) continue;
-
-        const div = document.createElement('div');
-        div.className = `message ${msg.role}`;
-
-        let contentHtml = '';
-
-        if (msg.role === 'toolResult') {
-          const resultText = (msg.content || []).map(c => c.text || '').join('\n');
-          const errorClass = msg.isError ? ' result-error' : '';
-          contentHtml = `<div class="result-container" onclick="this.classList.toggle('open')">
-            <div class="result-header">
-              <span class="result-toggle">&#9658;</span>
-              <span class="result-label">${escapeHtml(msg.toolName || 'result')}${msg.isError ? ' (error)' : ''}</span>
-            </div>
-            <div class="result-content${errorClass}">${escapeHtml(resultText)}</div>
-          </div>`;
-
-          div.innerHTML = `
-            <div class="message-header">
-              <span class="role">Tool Result</span>
-              <span class="timestamp">${formatTime(entry.timestamp)}</span>
-            </div>
-            ${contentHtml}
-          `;
-          messagesDiv.appendChild(div);
-          continue;
-        }
-
-        for (const c of msg.content || []) {
-          if (c.type === 'thinking' && c.thinking) {
-            contentHtml += `<div class="thinking"><div class="thinking-label">Thinking</div>${escapeHtml(c.thinking)}</div>`;
-          } else if (c.type === 'text' && c.text) {
-            contentHtml += `<div class="text-content">${escapeHtml(c.text)}</div>`;
-          } else if (c.type === 'toolCall') {
-            contentHtml += `<div class="tool-call" onclick="this.classList.toggle('open')">
-              <div class="tool-header">
-                <span class="tool-toggle">&#9658;</span>
-                <span class="tool-name">${escapeHtml(c.name)}</span>
-              </div>
-              <div class="tool-args">${escapeHtml(JSON.stringify(c.arguments, null, 2))}</div>
-            </div>`;
-          } else if (c.type === 'toolResult') {
-            const errorClass = c.is_error ? ' result-error' : '';
-            contentHtml += `<div class="result-container" onclick="this.classList.toggle('open')">
-              <div class="result-header">
-                <span class="result-toggle">&#9658;</span>
-                <span class="result-label">Tool Result${c.is_error ? ' (error)' : ''}</span>
-              </div>
-              <div class="result-content${errorClass}">${escapeHtml(c.content || '')}</div>
-            </div>`;
-          }
-        }
-
-        let usageHtml = '';
-        if (msg.usage || msg.model) {
-          const u = msg.usage || {};
-          usageHtml = `<div class="usage">
-            ${msg.model ? `<span>${escapeHtml(msg.model)}</span>` : ''}
-            <span>${u.input || 0} in</span>
-            <span>${u.output || 0} out</span>
-            ${u.cacheRead ? `<span>${u.cacheRead} cache</span>` : ''}
-            <span>$${(u.cost?.total || 0).toFixed(4)}</span>
-          </div>`;
-        }
-
-        div.innerHTML = `
-          <div class="message-header">
-            <span class="role">${msg.role}</span>
-            <span class="timestamp">${formatTime(entry.timestamp)}</span>
-          </div>
-          ${contentHtml}
-          ${usageHtml}
-        `;
-
-        messagesDiv.appendChild(div);
-      }
+      renderMessages(entries, messagesDiv, subagents, 0);
     }
 
     // SSE for live updates

@@ -27,7 +27,7 @@ app.get("/api/roots", (c) => {
 
 app.get("/api/roots/:rootId/sessions", (c) => {
   const rootId = c.req.param("rootId");
-  const sessions = getSessionsForRoot(rootId);
+  const sessions = getSessionsForRoot(rootId).filter((s) => s.threadSource !== "subagent");
   return c.json(sessions);
 });
 
@@ -50,7 +50,12 @@ app.get("/api/sessions/:sessionId", async (c) => {
   }
 
   const parsed = await parser(meta.path);
-  return c.json(parsed);
+  const subagents = meta.nativeId
+    ? getSessionsForRoot(meta.rootId)
+        .filter((s) => s.parentThreadId && s.parentThreadId === meta.nativeId)
+        .sort((a, b) => a.mtime - b.mtime)
+    : [];
+  return c.json({ ...parsed, sessionMeta: meta, subagents });
 });
 
 // SSE endpoint

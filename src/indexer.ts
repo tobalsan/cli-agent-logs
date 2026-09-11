@@ -2,7 +2,7 @@ import { relative, basename } from "path";
 import { Glob } from "bun";
 import { stat } from "fs/promises";
 import type { Root } from "./config";
-import { extractInitialPrompt, extractTokenTotals, type TokenTotals } from "./preview";
+import { extractInitialPrompt, extractTokenTotals, extractCodexSessionInfo, type TokenTotals } from "./preview";
 
 export interface SessionMeta {
   id: string;
@@ -15,6 +15,11 @@ export interface SessionMeta {
   size: number;
   initialPrompt?: string;
   tokens?: TokenTotals;
+  nativeId?: string;
+  threadSource?: string;
+  parentThreadId?: string;
+  agentNickname?: string;
+  agentPath?: string;
 }
 
 const sessionIndex = new Map<string, SessionMeta[]>();
@@ -69,9 +74,10 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
       const id = hashId(root.id, relativePath);
       const filename = fn;
 
-      const [initialPrompt, tokens] = await Promise.all([
+      const [initialPrompt, tokens, codexInfo] = await Promise.all([
         extractInitialPrompt(file, root.format),
         extractTokenTotals(file, root.format),
+        root.format === "codex" ? extractCodexSessionInfo(file) : Promise.resolve(undefined),
       ]);
 
       const meta: SessionMeta = {
@@ -85,6 +91,7 @@ export async function scanRoot(root: Root): Promise<SessionMeta[]> {
         size: st.size,
         initialPrompt,
         tokens,
+        ...codexInfo,
       };
 
       sessions.push(meta);
