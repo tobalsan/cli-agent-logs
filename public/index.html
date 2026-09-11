@@ -841,7 +841,8 @@
         } else if (c.type === 'text' && c.text) {
           contentHtml += `<div class="text-content">${escapeHtml(c.text)}</div>`;
         } else if (c.type === 'toolCall') {
-          contentHtml += `<div class="tool-call" onclick="this.classList.toggle('open')">
+          const idAttr = c.tool_use_id ? ` data-tool-use-id="${escapeHtml(c.tool_use_id)}"` : '';
+          contentHtml += `<div class="tool-call"${idAttr} onclick="this.classList.toggle('open')">
             <div class="tool-header">
               <span class="tool-toggle">&#9658;</span>
               <span class="tool-name">${escapeHtml(c.name)}</span>
@@ -942,6 +943,33 @@
       return card;
     }
 
+    // Finds the most recently rendered tool-call node in this container matching toolUseId.
+    function findToolCallNode(container, toolUseId) {
+      if (!toolUseId) return null;
+      const matches = container.querySelectorAll('[data-tool-use-id]');
+      for (let i = matches.length - 1; i >= 0; i--) {
+        if (matches[i].dataset.toolUseId === toolUseId) return matches[i];
+      }
+      return null;
+    }
+
+    // If entry is a tool-result-only message, tries to splice its result block(s) directly
+    // below their matching tool-call block (inside that assistant card) instead of rendering
+    // a standalone card. Returns true when merged; false means the caller should fall back
+    // to the normal standalone rendering (no match found, or mixed content).
+    function mergeToolResults(entry, container) {
+      const blocks = (entry.message && entry.message.content) || [];
+      if (!blocks.length || !blocks.every(c => c.type === 'toolResult')) return false;
+
+      const targets = blocks.map(c => ({ c, node: findToolCallNode(container, c.tool_use_id) }));
+      if (targets.some(t => !t.node)) return false;
+
+      for (const { c, node } of targets) {
+        node.insertAdjacentHTML('afterend', toolResultBlockHtml(c));
+      }
+      return true;
+    }
+
     // Renders entries interleaved with sub-agent cards, sorted by time. Reusable at any depth.
     // At depth 0 (the top-level transcript, not nested sub-agent bodies) it also builds one
     // outline row per rendered element and wires up scroll-spy tracking for it.
@@ -978,6 +1006,7 @@
       let tlIndex = 0;
       for (const item of items) {
         if (item.kind === 'message') {
+          if (mergeToolResults(item.entry, container)) continue;
           const el = buildMessageElement(item.entry);
           if (!el) continue;
           container.appendChild(el);
